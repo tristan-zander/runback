@@ -1,0 +1,7 @@
+[workspace]
+members = [
+    "common",
+    "discord-bot",
+    "website-backend",
+    "website-frontend"
+]
