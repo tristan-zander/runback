@@ -7,3 +7,15 @@ edition = "2021"
 
 [dependencies]
 common = { path = "../common" }
+# Twilight.rs
+twilight-cache-inmemory = "0.8.4"
+twilight-gateway = "0.8.3"
+twilight-http = "0.8.4"
+twilight-model = "0.8.4"
+twilight-standby = "0.8.2"
+twilight-command-parser = "0.8.1"
+twilight-embed-builder = "0.8.0"
+twilight-mention = "0.8.0"
+twilight-util = "0.8.2"
+# For logging
+tracing = "0.1.29"
