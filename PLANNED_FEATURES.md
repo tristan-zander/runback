@@ -66,3 +66,7 @@ Another service may offer betting fake points and offer rewards in exchange.
   - `list {Mine:default/Team/Player/All}` show scheduled matches (filter by players/team)
   - `start {Player/Team}` start a match with a player or team
   - `report {Score} {Match}` report the score for a match
+
+## Bracket
+### TODO: Fill this out
+I'm pretty certain that it'd be better to integrate with either Smash.gg or Challonge rather than make all the funcitonality from scratch. Either way, the bracket service will probably be a Discord bridge to either service.
