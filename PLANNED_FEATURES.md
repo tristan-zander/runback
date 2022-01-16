@@ -34,7 +34,7 @@ Using *Rematch* in place of a server's text-based LFG system will provide the fo
 
 ### League
 The league service will enable admins to setup leagues that players can participate in for points. 
-Players will play their matches over a set period of time, playing their matches as directed.
+Players will play their matches over a set period of time, starting their matches as directed.
 Alternatively, players can decide to start matches with anyone that they like at any time, working more like a ranked ladder.
 At the end of a league, points are tallyed and a leaderboard is posted in the relevant Discord channel.
 
@@ -42,9 +42,9 @@ League matches will follow a format similar to the matchmaking service.
 Players will either be called upon to start their match or initiate it themselves in an allotted timeframe.
 Once players start their match, an admin may be notified and a channel automatically generated for the players to use.
 
-Potentially, I see alot of potential for integration with this feature.
-Twitch integration can be used to advertise players or admins streaming their matches.
-Another service may offer betting fake points and offer rewards in exchange.
+Potentially, I see alot of use for integration with this feature.
+Twitch integration can be used to advertise matches that are being streamed by admins or the players.
+Another service may offer betting fake points and offer server rewards in exchange.
 
 #### Feature List
 - All admins will manage their leagues through a context menu returned by a Discord command or through a website interface
@@ -53,7 +53,7 @@ Another service may offer betting fake points and offer rewards in exchange.
   - Set relevant roles for admins, players, League Organizers, etc.
   - Set relevant channels for matches and reporting
   - Set start and end date
-  - Set player rights
+  - Set player privileges
 - `/league invite {DiscordUser}` invite a player to join in the league
 - `/league team ...` Commands related to team leagues
   - `create {Name}`
@@ -63,7 +63,7 @@ Another service may offer betting fake points and offer rewards in exchange.
     - Removing players
     - Reassigning the group leader
 - `/league match ...` commands related to matches
-  - `list {Mine:default/Team/Player/All}` show scheduled matches (filter by players/team)
+  - `list {Mine/Team/Player/All:default}` show scheduled matches (filter by players/team)
   - `start {Player/Team}` start a match with a player or team
   - `report {Score} {Match}` report the score for a match
 
