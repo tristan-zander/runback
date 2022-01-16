@@ -8,8 +8,8 @@ The bot will be split into the following 3 categories:
 
 ### Matchmaking
 The matchmaking service enables users to look for games with other people in a Discord server.
-In Matchmaking, there are no intended limits how who can play and how many sets are to be played.
-Using *Rematch* in place of a server's LFG system will provide the following benefits:
+In Matchmaking, there are no intended limits on who can play and how many sets are to be played.
+Using *Rematch* in place of a server's text-based LFG system will provide the following benefits:
 
 1. Users can choose to only be pinged for games during a time that they like, and they will receive a Direct Message whenever a match is ready.
 1. Channels won't be clogged with multiple ongoing games, as the bot will create a temporary, private channel for that session.
