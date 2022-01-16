@@ -2,6 +2,5 @@
 members = [
     "common",
     "discord-bot",
-    "website-backend",
-    "website-frontend"
+    "matchmaking-service"
 ]
