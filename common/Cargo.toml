@@ -7,3 +7,5 @@ edition = "2021"
 
 [dependencies]
 sea-orm = { version = "^0", features = [ "sqlx-postgres", "runtime-tokio-rustls", "macros" ], default-features = false }
+reqwest = "*"
+openidconnect = "2.2.0"

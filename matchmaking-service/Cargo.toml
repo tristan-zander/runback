@@ -6,3 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+rocket = "0.5.0-rc.1"
+reqwest = "*"
+openidconnect = "2.2.0"
+common = { path = "../common" }
