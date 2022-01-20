@@ -32,9 +32,9 @@ impl Into<Level> for LogLevel {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Config {
     pub rust_log: LogLevel,
-    pub database_url: String,
-    pub redis_url: Option<String>,
-    pub kafka_url: Option<String>,
+    pub database_url: Url,
+    pub redis_url: Option<Url>,
+    pub kafka_url: Option<Url>,
     pub keycloak_realm: Url,
     pub client_id: String,
     pub client_secret: Option<String>,
@@ -46,7 +46,9 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             rust_log: LogLevel::INFO,
-            database_url: Default::default(),
+            // It's fine to unwrap this because it shouldn't ever fail
+            database_url: Url::from_str("postgresql://rematch:password@localhost/matchmaking")
+                .unwrap(),
             redis_url: Default::default(),
             kafka_url: Default::default(),
             // It's fine to unwrap this because it shouldn't ever fail
@@ -72,5 +74,18 @@ impl Config {
         config.raw = Some(figment);
 
         Ok(config)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // If this panics, then there's likely something wrong with the Urls in the config
+    #[test]
+    fn test_config_default() {
+        let _config = Config::default();
+
+        assert!(true);
     }
 }
