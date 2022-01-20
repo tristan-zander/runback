@@ -3,7 +3,13 @@ extern crate rocket;
 extern crate openidconnect;
 extern crate reqwest;
 
+mod config;
+mod entities;
+
+use std::sync::Arc;
+
 use common::OpenIDUtil;
+use config::Config;
 use openidconnect::{
     core::{CoreAuthenticationFlow, CoreClient, CoreProviderMetadata},
     reqwest::{async_http_client, http_client},
@@ -32,11 +38,13 @@ async fn index(state: &State<OpenIDUtil>) -> std::string::String {
 
 #[launch]
 async fn rocket() -> _ {
+    let config = Config::new().expect("Could not generate configuration");
+
     // Setup some test data.
     let openid_util = common::OpenIDUtil::new(
-        "matchmaking".into(),
-        Some("get-from-env".into()),
-        "http://localhost:8080/auth/realms/demo".into(),
+        config.client_id.clone(),
+        config.client_secret.clone(),
+        config.keycloak_realm.to_string(),
         None,
     )
     .await
@@ -45,4 +53,5 @@ async fn rocket() -> _ {
     rocket::build()
         .mount("/", routes![index])
         .manage(openid_util)
+        .manage(config)
 }

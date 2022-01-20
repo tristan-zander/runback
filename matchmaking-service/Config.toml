@@ -1,0 +1,16 @@
+[general]
+# Set the log level
+rust_log = "DEBUG"
+
+[storage]
+database_url = ""
+redis_url = ""
+
+[events]
+kafka_url = ""
+
+[auth]
+keycloak_realm = "http://localhost:8080/auth/realms/rematch"
+client_id = "matchmaking"
+# I would not recommend you store the client secret here, even though it's possible
+# client_secret = "BE CAREFUL ABOUT HARDCODING THIS!"
