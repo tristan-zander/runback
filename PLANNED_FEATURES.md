@@ -22,6 +22,7 @@ Using *Rematch* in place of a server's text-based LFG system will provide the fo
   - Alternatively, click on a user's profile and select `Ask for Games` to start a matchmaking session
   - Default time (15min) before LFG ends
 - Users can pick from the available list of players who they wish to play against
+  - Filter by character and other criteria
 - When a match is found, setup a channel for users to communicate through
   - `/mm visibility {public/private}` admins and/or users can decide whether they want their chat to be public/private
   - Default time (30min) before ending that session unless extended (prevents orphaned channel buildup)
