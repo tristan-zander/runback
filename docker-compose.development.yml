@@ -1,0 +1,67 @@
+# This is the compose file for live-reloading development environments.
+# This should NEVER be enabled in production.
+version: "3.9"
+services:
+  matchmaking:
+    build:
+      dockerfile: ./matchmaking-service/development.Dockerfile
+      context: .
+    volumes:
+      - .:/var/app
+    ports:
+      - 8000:8000
+    environment:
+      - MM_AUTH
+      - MM_PROFILE
+      - ROCKET_ADDRESS=0.0.0.0
+    depends_on:
+      - redis
+      - keycloak
+      - kafka
+      - db
+
+  discord-bot:
+    build:
+      dockerfile: ./discord-bot/development.Dockerfile
+      context: .
+    volumes:
+      - .:/var/app
+    depends_on:
+      - redis
+      - keycloak
+      - kafka
+      - db
+
+  redis:
+    image: redis
+
+  keycloak:
+    image: bitnami/keycloak
+    ports:
+      - 8080:8080
+      - 8443:8443
+    environment:
+      - KEYCLOAK_ADMIN_USER=admin
+      - KEYCLOAK_ADMIN_PASSWORD=password
+      - KEYCLOAK_DATABASE_HOST=db
+      - KEYCLOAK_DATABASE_NAME=gale
+      - KEYCLOAK_DATABASE_USER=gale
+      - KEYCLOAK_DATABASE_PASSWORD=password
+      - KEYCLOAK_DATABASE_SCHEMA=public
+    depends_on:
+      - db
+
+  kafka:
+    image: bitnami/kafka
+
+  db:
+    image: postgres:14
+    volumes:
+      - postgresql_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=gale
+      - POSTGRES_PASSWORD=password
+
+volumes:
+  postgresql_data:
+    driver: local

@@ -1,16 +1,16 @@
-[general]
+[default]
 # Set the log level
 rust_log = "DEBUG"
 
-[storage]
-database_url = ""
-redis_url = ""
+[default.storage]
+database_url = "postgresql://gale:password@db/gale"
+redis_url = "http://redis"
 
-[events]
-kafka_url = ""
+[default.events]
+kafka_url = "http://kafka"
 
-[auth]
-keycloak_realm = "http://localhost:8080/auth/realms/rematch"
+[default.auth]
+keycloak_realm = "http://keycloak:8080/auth/realms/rematch"
 client_id = "matchmaking"
 # I would not recommend you store the client secret here, even though it's possible
 # client_secret = "BE CAREFUL ABOUT HARDCODING THIS!"

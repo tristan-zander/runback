@@ -6,8 +6,6 @@ extern crate reqwest;
 mod config;
 mod entities;
 
-use std::sync::Arc;
-
 use common::OpenIDUtil;
 use config::Config;
 use openidconnect::{
@@ -42,9 +40,9 @@ async fn rocket() -> _ {
 
     // Setup some test data.
     let openid_util = common::OpenIDUtil::new(
-        config.client_id.clone(),
-        config.client_secret.clone(),
-        config.keycloak_realm.to_string(),
+        config.auth.client_id.clone(),
+        config.auth.client_secret.clone(),
+        config.auth.keycloak_realm.to_string(),
         None,
     )
     .await
