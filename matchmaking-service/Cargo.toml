@@ -15,3 +15,4 @@ figment = { version = "0.10", features = ["toml", "env"] }
 serde = "1.0.133"
 tracing = "0.1.29"
 tracing-error = "0.2.0"
+tracing-subscriber = { version = "*", features = ["json"] }

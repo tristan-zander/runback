@@ -1,5 +1,3 @@
-extern crate openidconnect;
-extern crate reqwest;
 
 use openidconnect::{
     core::{CoreAuthenticationFlow, CoreClient, CoreProviderMetadata},

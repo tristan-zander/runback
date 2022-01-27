@@ -1,10 +1,12 @@
 #[macro_use]
 extern crate rocket;
-extern crate openidconnect;
-extern crate reqwest;
+#[macro_use]
+extern crate tracing;
 
 mod config;
 mod entities;
+
+use std::error::Error;
 
 use common::OpenIDUtil;
 use config::Config;
@@ -18,6 +20,7 @@ use openidconnect::{
 use rocket::State;
 
 #[get("/")]
+#[tracing::instrument]
 async fn index(state: &State<OpenIDUtil>) -> std::string::String {
     let creds = state
         .client
@@ -27,29 +30,52 @@ async fn index(state: &State<OpenIDUtil>) -> std::string::String {
 
     match creds {
         Ok(x) => {
-            println!("{:?}", x.access_token().secret().clone());
+            let client_secret = x.access_token().secret();
+            trace!(client_secret = ?client_secret, "New Client Secret");
             return "Success!".into();
         }
-        Err(e) => return format!("{:?}", e),
+        Err(e) => {
+            error!(error = ?e, "Could not get client secret");
+            return format!("{:?}", e);
+        }
     }
 }
 
-#[launch]
-async fn rocket() -> _ {
-    let config = Config::new().expect("Could not generate configuration");
+#[rocket::main]
+async fn main() -> Result<(), Box<dyn Error>> {
+    tracing_subscriber::fmt()
+        .with_level(true)
+        .with_target(true)
+        .with_max_level(tracing::Level::TRACE)
+        // .json()
+        .init();
+
+    let config = Config::new()?;
 
     // Setup some test data.
-    let openid_util = common::OpenIDUtil::new(
+    let openid_util = match common::OpenIDUtil::new(
         config.auth.client_id.clone(),
         config.auth.client_secret.clone(),
         config.auth.keycloak_realm.to_string(),
         None,
     )
     .await
-    .expect("Couldn't create openid tools");
+    {
+        Ok(o) => o,
+        Err(e) => {
+            error!(error = ?e, "Could not create OpenID toolkit");
+            return Err(e);
+        }
+    };
+
+    info!("Attempting to start webserver");
 
     rocket::build()
         .mount("/", routes![index])
         .manage(openid_util)
         .manage(config)
+        .launch()
+        .await?;
+
+    Ok(())
 }

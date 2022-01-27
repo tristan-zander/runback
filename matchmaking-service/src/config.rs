@@ -1,4 +1,4 @@
-use std::{error::Error, str::FromStr};
+use std::{error::Error, path::Path, str::FromStr};
 
 use figment::{
     providers::{Env, Format, Serialized, Toml},
@@ -31,13 +31,10 @@ impl Into<Level> for LogLevel {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Config {
-    pub rust_log: LogLevel,
+    pub logging: Logging,
     pub storage: Storage,
     pub events: Events,
     pub auth: Auth,
-
-    #[serde(skip)]
-    pub raw: Option<Figment>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -58,13 +55,36 @@ pub struct Auth {
     pub client_secret: Option<String>,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub enum LogDriver {
+    JSON,
+    Print,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct Logging {
+    log_level: LogLevel,
+    log_driver: LogDriver,
+    log_to_file: Option<Box<Path>>,
+    /// Specifically, add extra information about stats like thread ID, file name, etc. Only useful for debugging
+    too_much_information: bool,
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
-            #[cfg(debug_assertions)]
-            rust_log: LogLevel::DEBUG,
-            #[cfg(not(debug_assertions))]
-            rust_log: LogLevel::INFO,
+            logging: Logging {
+                #[cfg(debug_assertions)]
+                log_level: LogLevel::DEBUG,
+                #[cfg(not(debug_assertions))]
+                log_level: LogLevel::INFO,
+                log_driver: LogDriver::Print,
+                log_to_file: None,
+                #[cfg(not(debug_assertions))]
+                too_much_information: false, 
+                #[cfg(debug_assertions)]
+                too_much_information: true, 
+            },
             storage: Storage {
                 // It's fine to unwrap this because it shouldn't ever fail
                 database_url: Url::from_str("postgresql://rematch:password@localhost/matchmaking")
@@ -80,26 +100,24 @@ impl Default for Config {
                 client_id: "matchmaking".into(),
                 client_secret: None,
             },
-            raw: None,
         }
     }
 }
 
 impl Config {
+    pub fn new() -> Result<Config, Box<dyn Error>> {
+        Ok(Self::figment().extract::<Config>()?)
+    }
+
     /// Load order:
     ///     1. Set default values
     ///     2. Config.toml (override)
     ///     3. Any environment variables (override)
-    pub fn new() -> Result<Config, Box<dyn Error>> {
-        let figment = Figment::from(Serialized::defaults(Config::default()))
+    pub fn figment() -> Figment {
+        Figment::from(Serialized::defaults(Config::default()))
             .select(Profile::from_env_or("MM_PROFILE", "default"))
             .merge(Toml::file("Config.toml").nested())
-            .merge(Env::prefixed("MM_").global());
-
-        let mut config: Config = figment.extract()?;
-        config.raw = Some(figment);
-
-        Ok(config)
+            .merge(Env::prefixed("MM_").global())
     }
 }
 
