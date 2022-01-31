@@ -5,8 +5,16 @@ extern crate tracing;
 
 mod config;
 mod entities;
+mod events;
 
-use std::error::Error;
+use std::{
+    error::Error,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
 
 use common::OpenIDUtil;
 use config::Config;
@@ -17,7 +25,7 @@ use openidconnect::{
     ClientId, ClientSecret, CsrfToken, IssuerUrl, Nonce, OAuth2TokenResponse, PkceCodeChallenge,
     RedirectUrl, Scope,
 };
-use rocket::State;
+use rocket::{futures::join, State};
 
 #[get("/")]
 #[tracing::instrument]
@@ -52,30 +60,44 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let config = Config::new()?;
 
+    let mut should_run = Arc::new(AtomicBool::new(true));
+
     // Setup some test data.
-    let openid_util = match common::OpenIDUtil::new(
+    let openid_util = common::OpenIDUtil::new(
         config.auth.client_id.clone(),
         config.auth.client_secret.clone(),
         config.auth.keycloak_realm.to_string(),
         None,
     )
-    .await
-    {
-        Ok(o) => o,
-        Err(e) => {
-            error!(error = ?e, "Could not create OpenID toolkit");
-            return Err(e);
-        }
-    };
+    .await?;
 
     info!("Attempting to start webserver");
 
-    rocket::build()
+    let rocket = rocket::build()
         .mount("/", routes![index])
         .manage(openid_util)
-        .manage(config)
-        .launch()
+        .manage(config.clone())
+        .ignite()
         .await?;
 
+    let rocket_ev_loop = rocket::tokio::task::spawn(async move {
+        let err = match rocket.launch().await {
+            Err(e) => {
+                error!(error = %e, message = "Rocket shut down with errors");
+                Some(e)
+            }
+            Ok(_) => {
+                info!("Rocket received shutdown event.");
+                None
+            }
+        };
+        should_run.store(false, Ordering::Release);
+        err
+    });
+
+    let mut kafka = events::EventLoop::new(config.events.clone())?;
+    kafka.fake_event_loop().await;
+
+    rocket_ev_loop.await?;
     Ok(())
 }

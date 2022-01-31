@@ -1,4 +1,4 @@
-use std::{error::Error, path::Path, str::FromStr};
+use std::{collections::HashMap, error::Error, path::Path, str::FromStr};
 
 use figment::{
     providers::{Env, Format, Serialized, Toml},
@@ -45,7 +45,7 @@ pub struct Storage {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Events {
-    pub kafka_url: Option<Url>,
+    pub kafka_settings: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -81,9 +81,9 @@ impl Default for Config {
                 log_driver: LogDriver::Print,
                 log_to_file: None,
                 #[cfg(not(debug_assertions))]
-                too_much_information: false, 
+                too_much_information: false,
                 #[cfg(debug_assertions)]
-                too_much_information: true, 
+                too_much_information: true,
             },
             storage: Storage {
                 // It's fine to unwrap this because it shouldn't ever fail
@@ -92,7 +92,10 @@ impl Default for Config {
                 redis_url: Default::default(),
             },
             events: Events {
-                kafka_url: Default::default(),
+                kafka_settings: HashMap::from([
+                    ("bootstrap.servers".into(), "kafka:9092".into()),
+                    ("message.timeout.ms".into(), "5000".into()),
+                ]),
             },
             auth: Auth {
                 // It's fine to unwrap this because it shouldn't ever fail

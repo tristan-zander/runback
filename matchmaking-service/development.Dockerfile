@@ -3,7 +3,7 @@
 # Keep in mind that you still have to manually test the production environment,
 # since there's no separation of workspaces here.
 FROM alpine:3
-RUN apk add --no-cache rust cargo openssl openssl-dev pkgconfig
+RUN apk add --no-cache rust cargo openssl openssl-dev pkgconfig cmake make gcc g++ zlib openssl-dev libsasl zstd-dev
 RUN cargo install cargo-watch
 VOLUME /var/app
 WORKDIR /var/app/matchmaking-service

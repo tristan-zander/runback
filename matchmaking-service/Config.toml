@@ -6,8 +6,10 @@ rust_log = "DEBUG"
 database_url = "postgresql://gale:password@db/gale"
 redis_url = "http://redis"
 
-[default.events]
-kafka_url = "http://kafka"
+# Place all rdkafka configuration settings here
+[default.events.kafka_settings]
+'message.timeout.ms' = "5000"
+'bootstrap.servers' = "kafka:9092"
 
 [default.auth]
 keycloak_realm = "http://keycloak:8080/auth/realms/rematch"
