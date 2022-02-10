@@ -16,7 +16,7 @@ use std::{
     time::Duration,
 };
 
-use common::OpenIDUtil;
+use common::auth::OpenIDUtil;
 use config::Config;
 use openidconnect::{
     core::{CoreAuthenticationFlow, CoreClient, CoreProviderMetadata},
@@ -63,7 +63,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let mut should_run = Arc::new(AtomicBool::new(true));
 
     // Setup some test data.
-    let openid_util = common::OpenIDUtil::new(
+    let openid_util = OpenIDUtil::new(
         config.auth.client_id.clone(),
         config.auth.client_secret.clone(),
         config.auth.keycloak_realm.to_string(),

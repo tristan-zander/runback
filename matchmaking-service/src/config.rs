@@ -1,5 +1,6 @@
 use std::{collections::HashMap, error::Error, path::Path, str::FromStr};
 
+use common::logging::{LogDriver, LogLevel};
 use figment::{
     providers::{Env, Format, Serialized, Toml},
     Figment, Profile,
@@ -7,27 +8,6 @@ use figment::{
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use tracing::Level;
-
-#[derive(Debug, Copy, Clone, Deserialize, Serialize)]
-pub enum LogLevel {
-    TRACE,
-    DEBUG,
-    INFO,
-    WARN,
-    ERROR,
-}
-
-impl Into<Level> for LogLevel {
-    fn into(self) -> Level {
-        match self {
-            Self::TRACE => Level::TRACE,
-            Self::DEBUG => Level::DEBUG,
-            Self::INFO => Level::INFO,
-            Self::WARN => Level::WARN,
-            Self::ERROR => Level::ERROR,
-        }
-    }
-}
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Config {
@@ -53,12 +33,6 @@ pub struct Auth {
     pub keycloak_realm: Url,
     pub client_id: String,
     pub client_secret: Option<String>,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub enum LogDriver {
-    JSON,
-    Print,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

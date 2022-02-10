@@ -7,15 +7,21 @@ edition = "2021"
 
 [dependencies]
 common = { path = "../common" }
+figment = { version = "0.10", features = ["toml", "env"] }
+serde = "1.0.133"
 # Twilight.rs
-twilight-cache-inmemory = "0.8.4"
-twilight-gateway = "0.8.3"
-twilight-http = "0.8.4"
-twilight-model = "0.8.4"
-twilight-standby = "0.8.2"
-twilight-command-parser = "0.8.1"
-twilight-embed-builder = "0.8.0"
-twilight-mention = "0.8.0"
-twilight-util = "0.8.2"
+twilight-cache-inmemory = "0.9.0"
+twilight-gateway = "0.9.0"
+twilight-http = "0.9.0"
+twilight-model = "0.9.0"
+twilight-standby = "0.9.0"
+twilight-embed-builder = "0.9.0"
+twilight-mention = "0.9.0"
+twilight-util = { version = "0.9.0", features = ["full"] }
+# Async utils
+tokio = { version = "1.16", features = ["full"]}
+futures = "0.3.19"
 # For logging
 tracing = "0.1.29"
+tracing-subscriber = { version = "*", features = ["json"] }
+tracing-log = "*"

@@ -2,8 +2,10 @@
 # You have to manually bind to the volume for this to work.
 # Keep in mind that you still have to manually test the production environment,
 # since there's no separation of workspaces here.
-FROM alpine:3
-RUN apk add --no-cache rust cargo openssl openssl-dev pkgconfig
+
+# TODO: move this off of edge as soon as there's a stable version of Alpine that has Rust 1.57.0
+FROM alpine:edge
+RUN apk add --no-cache 'cargo>1.57' openssl openssl-dev pkgconfig
 RUN cargo install cargo-watch
 VOLUME /var/app
 WORKDIR /var/app/discord-bot
