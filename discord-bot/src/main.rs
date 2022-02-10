@@ -9,9 +9,11 @@ use twilight_gateway::{cluster::ShardScheme, Cluster, Intents};
 use twilight_http::Client as HttpClient;
 use twilight_model::gateway::event::Event;
 
+use crate::interactions::{application_commands::ApplicationCommandUtilities, InteractionHandler};
+
+mod client;
 mod config;
 mod interactions;
-mod client;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -27,9 +29,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let config = Config::new()?;
 
     // Register guild commands
-    let command_map = interactions::application_commands::register_all_application_commands(config.clone()).await?;
+    info!("Registered guild commands");
 
-    info!("Registered guild commands, starting cluster.");
+    let interactions = Arc::new(InteractionHandler::init(config.clone()));
 
     // This is the default scheme. It will automatically create as many
     // shards as is suggested by Discord.
@@ -58,15 +60,30 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // Process each event as they come in.
     while let Some((shard_id, event)) = events.next().await {
+        let cluster_ref = cluster.clone();
+
         // Update the cache with the event.
         cache.update(&event);
 
         debug!(ev = %format!("{:?}", event), "Received Discord event");
 
+        let shard = match cluster_ref.shard(shard_id) {
+            Some(s) => s,
+            None => {
+                error!(shard = %shard_id, "Invalid shard received during event");
+                // Do some error handling here.
+                continue;
+            }
+        };
+
         match event {
             Event::Ready(_) => info!("Bot is ready!"),
-            Event::InteractionCreate(interaction) => {
-                tokio::spawn(interactions::handle_interaction(interaction));
+            Event::InteractionCreate(i) => {
+                let interaction_ref = interactions.clone();
+                tokio::spawn(async move {
+                    let shard = cluster_ref.shard(shard_id).unwrap();
+                    interaction_ref.handle_interaction(i, shard).await;
+                });
             }
             _ => trace!(kind = %format!("{:?}", event.kind()), "Unhandled event"),
         }
