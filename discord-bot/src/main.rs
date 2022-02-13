@@ -28,10 +28,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let config = Config::new()?;
 
+    let interactions = Arc::new(InteractionHandler::init(&config).await?);
+    
     // Register guild commands
     info!("Registered guild commands");
-
-    let interactions = Arc::new(InteractionHandler::init(&config).await?);
 
     // This is the default scheme. It will automatically create as many
     // shards as is suggested by Discord.
