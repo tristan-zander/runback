@@ -1,7 +1,4 @@
 #[macro_use]
-extern crate tracing;
-
-#[macro_use]
 extern crate serde;
 
 // TODO: Write common logger setup

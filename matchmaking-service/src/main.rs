@@ -13,19 +13,14 @@ use std::{
         atomic::{AtomicBool, Ordering},
         Arc,
     },
-    time::Duration,
 };
 
 use common::auth::OpenIDUtil;
 use config::Config;
 use openidconnect::{
-    core::{CoreAuthenticationFlow, CoreClient, CoreProviderMetadata},
-    reqwest::{async_http_client, http_client},
-    url::ParseError,
-    ClientId, ClientSecret, CsrfToken, IssuerUrl, Nonce, OAuth2TokenResponse, PkceCodeChallenge,
-    RedirectUrl, Scope,
+    reqwest::{async_http_client}, OAuth2TokenResponse,
 };
-use rocket::{futures::join, State};
+use rocket::State;
 
 #[get("/")]
 #[tracing::instrument]
@@ -60,7 +55,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let config = Config::new()?;
 
-    let mut should_run = Arc::new(AtomicBool::new(true));
+    let should_run = Arc::new(AtomicBool::new(true));
 
     // Setup some test data.
     let openid_util = OpenIDUtil::new(

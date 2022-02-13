@@ -5,9 +5,7 @@ use rdkafka::{
     producer::{FutureProducer, FutureRecord},
     ClientConfig,
 };
-use rocket::{futures::{future::join_all, FutureExt}, tokio::join};
-
-use crate::config::Config;
+use rocket::futures::future::join_all;
 
 pub struct EventLoop {
     producer: FutureProducer,
