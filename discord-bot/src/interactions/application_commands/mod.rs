@@ -1,42 +1,66 @@
-use std::{collections::HashMap, error::Error};
+use std::error::Error;
 
-use twilight_http::Client as HttpClient;
+use twilight_embed_builder::{EmbedBuilder, EmbedFieldBuilder};
+use twilight_http::Client as DiscordHttpClient;
 use twilight_model::{
     application::{
+        callback::{CallbackData, InteractionResponse},
         command::{Command, CommandType},
         interaction::ApplicationCommand as DiscordApplicationCommand,
     },
     gateway::payload::incoming::InteractionCreate,
-    id::{marker::GuildMarker, Id},
+    id::{
+        marker::{ApplicationMarker, GuildMarker},
+        Id,
+    }, channel::message::MessageFlags,
 };
-use twilight_util::builder::command::{CommandBuilder, StringBuilder, SubCommandBuilder};
+use twilight_util::builder::{
+    command::{CommandBuilder, StringBuilder, SubCommandBuilder},
+    CallbackDataBuilder,
+};
 
 use crate::config::Config;
 
 pub struct ApplicationCommandUtilities {
-    // database, kafka, other shared deps
+    http_client: DiscordHttpClient,
+    application_id: Id<ApplicationMarker>,
 }
 
 impl ApplicationCommandUtilities {
-    pub async fn register_all_application_commands(
-        config: Config,
-    ) -> Result<(), Box<dyn Error>> {
-        let debug_guild = config.debug_guild_id;
+    pub async fn new(config: &Config) -> Result<Self, Box<dyn Error>> {
+        let http_client = DiscordHttpClient::new(config.token.clone());
+        let application_id = {
+            let response = http_client.current_user_application().exec().await?;
+            response.model().await?.id
+        };
 
+        Ok(Self {
+            http_client,
+            application_id,
+        })
+    }
+
+    pub fn new_with_application_id(config: &Config, application_id: Id<ApplicationMarker>) -> Self {
+        Self {
+            http_client: DiscordHttpClient::new(config.token.clone()),
+            application_id,
+        }
+    }
+
+    pub async fn register_all_application_commands(
+        &self,
+        debug_guild: Option<Id<GuildMarker>>,
+    ) -> Result<(), Box<dyn Error>> {
         let commands = vec![
             PingCommandHander::to_command(debug_guild),
             MatchmakingCommandHandler::to_command(debug_guild),
         ];
 
-        let client = HttpClient::new(config.token);
-        let application_id = {
-            let response = client.current_user_application().exec().await?;
-            response.model().await?.id
-        };
-
-        let res = client
-            .interaction(application_id)
-            .set_guild_commands(config.debug_guild_id.unwrap(), commands.as_slice())
+        // TODO: In the future, only set as guild commands if we're running in production mode or the debug_guild is empty
+        let res = self
+            .http_client
+            .interaction(self.application_id)
+            .set_guild_commands(debug_guild.unwrap(), commands.as_slice())
             .exec()
             .await?
             .models()
@@ -47,16 +71,42 @@ impl ApplicationCommandUtilities {
         Ok(())
     }
 
-    pub async fn on_command_receive(&self, command: &Box<DiscordApplicationCommand>) -> Result<(), Box<dyn Error>> {
+    pub async fn on_command_receive(
+        &self,
+        command: &Box<DiscordApplicationCommand>,
+    ) -> Result<(), Box<dyn Error>> {
         // TODO: Assert that the guild has accepted the EULA
         // if has_accepted_eula(command.guild_id) {
         // Send a message to the user, saying that a server administrator needs to accept the eula
         // }
 
+        let command_id = command.data.id;
         let command_name = command.data.name.as_str();
         match command_name {
             "ping" => {
                 // Respond with `Pong` with an ephemeral message and the current ping in ms
+
+                let message = InteractionResponse::ChannelMessageWithSource(
+                    CallbackDataBuilder::new()
+                        .embeds(vec![EmbedBuilder::new()
+                            .color(0x55_4e_2b)
+                            .description("Runback Matchmaking Bot")
+                            .field(EmbedFieldBuilder::new("Ping?", "Pong!").build())
+                            .build()?])
+                        .flags(MessageFlags::EPHEMERAL)
+                        .build(),
+                );
+
+                let res = self
+                    .http_client
+                    .interaction(self.application_id)
+                    .interaction_callback(command.id, command.token.as_str(), &message)
+                    .exec()
+                    .await?;
+
+                debug!(message = %format!("{:?}", message), "Reponded to command \"Pong\"");
+
+                // self.client.message(command.channel_id, message_id);
             }
             "eula" => {
                 // Send a message with the EULA as the message body (or a link to the website)
@@ -119,9 +169,7 @@ impl ApplicationCommandCallback for PingCommandHander {
     }
 }
 
-struct MatchmakingCommandHandler {
-    command: Command,
-}
+struct MatchmakingCommandHandler {}
 
 impl ApplicationCommand for MatchmakingCommandHandler {
     fn to_command(debug_guild: Option<Id<GuildMarker>>) -> Command {

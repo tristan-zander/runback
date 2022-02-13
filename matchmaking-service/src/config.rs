@@ -7,7 +7,6 @@ use figment::{
 };
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
-use tracing::Level;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Config {

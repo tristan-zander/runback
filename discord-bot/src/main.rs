@@ -6,10 +6,10 @@ use futures::stream::StreamExt;
 use std::{error::Error, sync::Arc};
 use twilight_cache_inmemory::{InMemoryCache, ResourceType};
 use twilight_gateway::{cluster::ShardScheme, Cluster, Intents};
-use twilight_http::Client as HttpClient;
+
 use twilight_model::gateway::event::Event;
 
-use crate::interactions::{application_commands::ApplicationCommandUtilities, InteractionHandler};
+use crate::interactions::InteractionHandler;
 
 mod client;
 mod config;
@@ -31,7 +31,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // Register guild commands
     info!("Registered guild commands");
 
-    let interactions = Arc::new(InteractionHandler::init(config.clone()));
+    let interactions = Arc::new(InteractionHandler::init(&config).await?);
 
     // This is the default scheme. It will automatically create as many
     // shards as is suggested by Discord.
@@ -67,7 +67,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
         debug!(ev = %format!("{:?}", event), "Received Discord event");
 
-        let shard = match cluster_ref.shard(shard_id) {
+        let _shard = match cluster_ref.shard(shard_id) {
             Some(s) => s,
             None => {
                 error!(shard = %shard_id, "Invalid shard received during event");
