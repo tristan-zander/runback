@@ -8,14 +8,15 @@ use twilight_model::{
         command::{Command, CommandType},
         interaction::ApplicationCommand as DiscordApplicationCommand,
     },
+    channel::message::MessageFlags,
     gateway::payload::incoming::InteractionCreate,
     id::{
         marker::{ApplicationMarker, GuildMarker},
         Id,
-    }, channel::message::MessageFlags,
+    },
 };
 use twilight_util::builder::{
-    command::{CommandBuilder, StringBuilder, SubCommandBuilder},
+    command::{ChannelBuilder, CommandBuilder, StringBuilder, SubCommandBuilder, RoleBuilder},
     CallbackDataBuilder,
 };
 
@@ -40,6 +41,7 @@ impl ApplicationCommandUtilities {
         })
     }
 
+    #[allow(dead_code)]
     pub fn new_with_application_id(config: &Config, application_id: Id<ApplicationMarker>) -> Self {
         Self {
             http_client: DiscordHttpClient::new(config.token.clone()),
@@ -54,6 +56,7 @@ impl ApplicationCommandUtilities {
         let commands = vec![
             PingCommandHander::to_command(debug_guild),
             MatchmakingCommandHandler::to_command(debug_guild),
+            AdminCommandHandler::to_command(debug_guild)
         ];
 
         // TODO: In the future, only set as guild commands if we're running in production mode or the debug_guild is empty
@@ -66,7 +69,7 @@ impl ApplicationCommandUtilities {
             .models()
             .await?;
 
-        debug!(res = %format!("{:?}", res), "Successfully set guild commands");
+        debug!(commands = %format!("{:?}", res), "Successfully set guild commands");
 
         Ok(())
     }
@@ -111,7 +114,7 @@ impl ApplicationCommandUtilities {
             "eula" => {
                 // Send a message with the EULA as the message body (or a link to the website)
             }
-            "matchmaking" => {
+            "mm" => {
                 // Find the related matchmaking subcommand
             }
             "league" => {
@@ -119,6 +122,9 @@ impl ApplicationCommandUtilities {
             }
             "tournament" => {
                 // Find the related tournament subcommand
+            }
+            "admin" => {
+                // Admin related settings
             }
             _ => debug!(command_name = %command_name, "Unhandled application command"),
         }
@@ -131,12 +137,6 @@ impl ApplicationCommandUtilities {
 pub trait ApplicationCommand {
     /// Return the command in a form that can be registered by Discord through an http call.
     fn to_command(debug_guild: Option<Id<GuildMarker>>) -> Command;
-}
-
-/// Each Application Command handler must implement this trait so it can be turned into registered and executed.
-pub trait ApplicationCommandCallback {
-    /// Execute the command at runtime.
-    fn execute(&mut self, data: Box<InteractionCreate>) -> Result<(), Box<dyn Error>>;
 }
 
 struct PingCommandHander;
@@ -163,26 +163,32 @@ impl ApplicationCommand for PingCommandHander {
     }
 }
 
-impl ApplicationCommandCallback for PingCommandHander {
-    fn execute(&mut self, _data: Box<InteractionCreate>) -> Result<(), Box<dyn Error>> {
-        Ok(())
-    }
-}
-
-struct MatchmakingCommandHandler {}
+struct MatchmakingCommandHandler;
 
 impl ApplicationCommand for MatchmakingCommandHandler {
     fn to_command(debug_guild: Option<Id<GuildMarker>>) -> Command {
         let mut builder = CommandBuilder::new(
-            "matchmaking".into(),
-            "Matchmaking related commands".into(),
+            "mm".into(),
+            "Matchmaking commands".into(),
             CommandType::ChatInput,
         )
         .option(
-            SubCommandBuilder::new("start".into(), "Start a matchmaking session".into()).build(),
+            SubCommandBuilder::new("show-matches".into(), "Show the matchmaking menu".into())
+                .build(),
         )
         .option(
-            SubCommandBuilder::new("end".into(), "Finish a matchmaking session".into()).build(),
+            SubCommandBuilder::new(
+                "settings".into(),
+                "View and update settings such as default character".into(),
+            )
+            .build(),
+        )
+        .option(
+            SubCommandBuilder::new(
+                "end-session".into(),
+                "Finish your matchmaking session".into(),
+            )
+            .build(),
         );
 
         if let Some(id) = debug_guild {
@@ -190,13 +196,56 @@ impl ApplicationCommand for MatchmakingCommandHandler {
         }
 
         let comm = builder.build();
-        debug!(comm = %format!("{:?}", comm), "Created command!");
+        debug!(command = %format!("{:?}", comm), "Created command!");
         return comm;
     }
 }
 
-impl ApplicationCommandCallback for MatchmakingCommandHandler {
-    fn execute(&mut self, _data: Box<InteractionCreate>) -> Result<(), Box<dyn Error>> {
-        Ok(())
+struct AdminCommandHandler;
+
+impl ApplicationCommand for AdminCommandHandler {
+    fn to_command(debug_guild: Option<Id<GuildMarker>>) -> Command {
+        let mut builder = CommandBuilder::new(
+            "admin".into(),
+            "Admin configuration and management settings".into(),
+            CommandType::ChatInput,
+        )
+        .option(
+            SubCommandBuilder::new("matchmaking".into(), "Matchmaking settings".into())
+                .option(
+                    SubCommandBuilder::new(
+                        "set-matchmaking-channel".into(),
+                        "Set the channel where the matchmaking panel will be posted".into(),
+                    )
+                    .option(
+                        ChannelBuilder::new(
+                            "channel".into(),
+                            "The channel that the matchmaking panel will be posted".into(),
+                        )
+                        .build(),
+                    )
+                    .build(),
+                )
+                .option(
+                    SubCommandBuilder::new(
+                        "set-matchmaking-role".into(),
+                        "Set which role can access matchmaking".into(),
+                    )
+                    .option(
+                        RoleBuilder::new("matchmaking-role".into(), "The role that can access matchmaking features".into())
+                        .build(),
+                    )
+                    .build(),
+                )
+                .build(),
+        );
+
+        if let Some(id) = debug_guild {
+            builder = builder.guild_id(id);
+        }
+
+        let comm = builder.build();
+        debug!(command = %format!("{:?}", comm), "Created command!");
+        return comm;
     }
 }
