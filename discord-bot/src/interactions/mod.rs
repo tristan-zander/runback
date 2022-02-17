@@ -2,7 +2,6 @@ pub mod application_commands;
 
 use std::error::Error;
 
-use tracing::Instrument;
 use twilight_gateway::Shard;
 use twilight_model::gateway::payload::incoming::InteractionCreate;
 

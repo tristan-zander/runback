@@ -25,6 +25,7 @@ impl EventLoop {
         Ok(EventLoop { producer })
     }
 
+    #[allow(dead_code)]
     pub async fn run_event_loop(&mut self) {}
 
     pub async fn fake_event_loop(&mut self) {
