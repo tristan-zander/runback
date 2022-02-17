@@ -1,30 +1,37 @@
+mod eula;
+
 use std::error::Error;
 
 use twilight_embed_builder::{EmbedBuilder, EmbedFieldBuilder};
 use twilight_http::Client as DiscordHttpClient;
 use twilight_model::{
     application::{
-        callback::{CallbackData, InteractionResponse},
+        callback::InteractionResponse,
         command::{Command, CommandType},
         interaction::ApplicationCommand as DiscordApplicationCommand,
     },
     channel::message::MessageFlags,
-    gateway::payload::incoming::InteractionCreate,
     id::{
         marker::{ApplicationMarker, GuildMarker},
         Id,
     },
 };
 use twilight_util::builder::{
-    command::{ChannelBuilder, CommandBuilder, StringBuilder, SubCommandBuilder, RoleBuilder},
+    command::{
+        ChannelBuilder, CommandBuilder, RoleBuilder, StringBuilder, SubCommandBuilder,
+        SubCommandGroupBuilder,
+    },
     CallbackDataBuilder,
 };
 
 use crate::config::Config;
 
+use self::eula::EULACommandHandler;
+
 pub struct ApplicationCommandUtilities {
     http_client: DiscordHttpClient,
     application_id: Id<ApplicationMarker>,
+    eula_command_handler: EULACommandHandler,
 }
 
 impl ApplicationCommandUtilities {
@@ -38,6 +45,10 @@ impl ApplicationCommandUtilities {
         Ok(Self {
             http_client,
             application_id,
+            eula_command_handler: EULACommandHandler {
+                http_client: DiscordHttpClient::new(config.token.clone()),
+                application_id,
+            },
         })
     }
 
@@ -46,6 +57,10 @@ impl ApplicationCommandUtilities {
         Self {
             http_client: DiscordHttpClient::new(config.token.clone()),
             application_id,
+            eula_command_handler: EULACommandHandler {
+                http_client: DiscordHttpClient::new(config.token.clone()),
+                application_id,
+            },
         }
     }
 
@@ -56,7 +71,8 @@ impl ApplicationCommandUtilities {
         let commands = vec![
             PingCommandHander::to_command(debug_guild),
             MatchmakingCommandHandler::to_command(debug_guild),
-            AdminCommandHandler::to_command(debug_guild)
+            AdminCommandHandler::to_command(debug_guild),
+            EULACommandHandler::to_command(debug_guild),
         ];
 
         // TODO: In the future, only set as guild commands if we're running in production mode or the debug_guild is empty
@@ -83,7 +99,7 @@ impl ApplicationCommandUtilities {
         // Send a message to the user, saying that a server administrator needs to accept the eula
         // }
 
-        let command_id = command.data.id;
+        let _command_id = command.data.id;
         let command_name = command.data.name.as_str();
         match command_name {
             "ping" => {
@@ -100,7 +116,7 @@ impl ApplicationCommandUtilities {
                         .build(),
                 );
 
-                let res = self
+                let _res = self
                     .http_client
                     .interaction(self.application_id)
                     .interaction_callback(command.id, command.token.as_str(), &message)
@@ -113,6 +129,7 @@ impl ApplicationCommandUtilities {
             }
             "eula" => {
                 // Send a message with the EULA as the message body (or a link to the website)
+                self.eula_command_handler.on_command_called(command).await?;
             }
             "mm" => {
                 // Find the related matchmaking subcommand
@@ -211,33 +228,25 @@ impl ApplicationCommand for AdminCommandHandler {
             CommandType::ChatInput,
         )
         .option(
-            SubCommandBuilder::new("matchmaking".into(), "Matchmaking settings".into())
-                .option(
+            SubCommandGroupBuilder::new("matchmaking".into(), "Matchmaking settings".into())
+                .subcommands(vec![
                     SubCommandBuilder::new(
                         "set-matchmaking-channel".into(),
                         "Set the channel where the matchmaking panel will be posted".into(),
                     )
-                    .option(
-                        ChannelBuilder::new(
-                            "channel".into(),
-                            "The channel that the matchmaking panel will be posted".into(),
-                        )
-                        .build(),
-                    )
-                    .build(),
-                )
-                .option(
+                    .option(ChannelBuilder::new(
+                        "channel".into(),
+                        "The channel that the matchmaking panel will be posted".into(),
+                    )),
                     SubCommandBuilder::new(
                         "set-matchmaking-role".into(),
                         "Set which role can access matchmaking".into(),
                     )
-                    .option(
-                        RoleBuilder::new("matchmaking-role".into(), "The role that can access matchmaking features".into())
-                        .build(),
-                    )
-                    .build(),
-                )
-                .build(),
+                    .option(RoleBuilder::new(
+                        "matchmaking-role".into(),
+                        "The role that can access matchmaking features".into(),
+                    )),
+                ]),
         );
 
         if let Some(id) = debug_guild {
