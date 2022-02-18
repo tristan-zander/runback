@@ -17,9 +17,7 @@ use std::{
 
 use common::auth::OpenIDUtil;
 use config::Config;
-use openidconnect::{
-    reqwest::{async_http_client}, OAuth2TokenResponse,
-};
+use openidconnect::{reqwest::async_http_client, OAuth2TokenResponse};
 use rocket::State;
 
 #[get("/")]
