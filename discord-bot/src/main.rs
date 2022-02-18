@@ -29,7 +29,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let config = Config::new()?;
 
     let interactions = Arc::new(InteractionHandler::init(&config).await?);
-    
+
     // Register guild commands
     info!("Registered guild commands");
 

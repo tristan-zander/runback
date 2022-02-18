@@ -16,7 +16,9 @@ pub struct InteractionHandler {
 impl InteractionHandler {
     pub async fn init(config: &Config) -> Result<Self, Box<dyn Error>> {
         let application_command_utils = ApplicationCommandUtilities::new(config).await?;
-        application_command_utils.register_all_application_commands(config.debug_guild_id).await?;
+        application_command_utils
+            .register_all_application_commands(config.debug_guild_id)
+            .await?;
         Ok(Self {
             application_command_utils,
         })

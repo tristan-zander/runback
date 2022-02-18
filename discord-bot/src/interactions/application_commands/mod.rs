@@ -1,3 +1,4 @@
+mod admin;
 mod eula;
 
 use std::error::Error;
@@ -26,12 +27,21 @@ use twilight_util::builder::{
 
 use crate::config::Config;
 
-use self::eula::EULACommandHandler;
+use self::{admin::AdminCommandHandler, eula::EULACommandHandler};
 
+// TODO: This needs to be swapped. Handlers should have an immutable reference to an ApplicationCommandUtilities
+// instead of the other way around. Create a new `CommandHandlers` struct instead and move the handlers into the InteractionUtils
+// Struct should contain
+// - http_client
+// - db_client
+// - &cache or redis
+// - kafka
+// and any helper functions to help make application commands easier
 pub struct ApplicationCommandUtilities {
     http_client: DiscordHttpClient,
     application_id: Id<ApplicationMarker>,
     eula_command_handler: EULACommandHandler,
+    admin_command_handler: AdminCommandHandler,
 }
 
 impl ApplicationCommandUtilities {
@@ -42,14 +52,7 @@ impl ApplicationCommandUtilities {
             response.model().await?.id
         };
 
-        Ok(Self {
-            http_client,
-            application_id,
-            eula_command_handler: EULACommandHandler {
-                http_client: DiscordHttpClient::new(config.token.clone()),
-                application_id,
-            },
-        })
+        Ok(Self::new_with_application_id(config, application_id))
     }
 
     #[allow(dead_code)]
@@ -61,6 +64,7 @@ impl ApplicationCommandUtilities {
                 http_client: DiscordHttpClient::new(config.token.clone()),
                 application_id,
             },
+            admin_command_handler: AdminCommandHandler {},
         }
     }
 
@@ -148,6 +152,21 @@ impl ApplicationCommandUtilities {
 
         Ok(())
     }
+
+    async fn send_message(
+        &self,
+        command: &Box<DiscordApplicationCommand>,
+        message: &InteractionResponse,
+    ) -> Result<(), Box<dyn Error>> {
+        let _res = self
+            .http_client
+            .interaction(self.application_id)
+            .interaction_callback(command.id, command.token.as_str(), message)
+            .exec()
+            .await?;
+
+        Ok(())
+    }
 }
 
 // TODO: This should definitely be renamed to something else so it doesn't conflict with twilight_models
@@ -206,47 +225,6 @@ impl ApplicationCommand for MatchmakingCommandHandler {
                 "Finish your matchmaking session".into(),
             )
             .build(),
-        );
-
-        if let Some(id) = debug_guild {
-            builder = builder.guild_id(id);
-        }
-
-        let comm = builder.build();
-        debug!(command = %format!("{:?}", comm), "Created command!");
-        return comm;
-    }
-}
-
-struct AdminCommandHandler;
-
-impl ApplicationCommand for AdminCommandHandler {
-    fn to_command(debug_guild: Option<Id<GuildMarker>>) -> Command {
-        let mut builder = CommandBuilder::new(
-            "admin".into(),
-            "Admin configuration and management settings".into(),
-            CommandType::ChatInput,
-        )
-        .option(
-            SubCommandGroupBuilder::new("matchmaking".into(), "Matchmaking settings".into())
-                .subcommands(vec![
-                    SubCommandBuilder::new(
-                        "set-matchmaking-channel".into(),
-                        "Set the channel where the matchmaking panel will be posted".into(),
-                    )
-                    .option(ChannelBuilder::new(
-                        "channel".into(),
-                        "The channel that the matchmaking panel will be posted".into(),
-                    )),
-                    SubCommandBuilder::new(
-                        "set-matchmaking-role".into(),
-                        "Set which role can access matchmaking".into(),
-                    )
-                    .option(RoleBuilder::new(
-                        "matchmaking-role".into(),
-                        "The role that can access matchmaking features".into(),
-                    )),
-                ]),
         );
 
         if let Some(id) = debug_guild {
