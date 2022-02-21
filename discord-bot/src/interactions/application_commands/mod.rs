@@ -1,7 +1,7 @@
 mod admin;
 mod eula;
 
-use std::error::Error;
+use std::{error::Error, sync::Arc};
 
 use twilight_embed_builder::{EmbedBuilder, EmbedFieldBuilder};
 use twilight_http::Client as DiscordHttpClient;
@@ -29,69 +29,27 @@ use crate::config::Config;
 
 use self::{admin::AdminCommandHandler, eula::EULACommandHandler};
 
-// TODO: This needs to be swapped. Handlers should have an immutable reference to an ApplicationCommandUtilities
-// instead of the other way around. Create a new `CommandHandlers` struct instead and move the handlers into the InteractionUtils
-// Struct should contain
-// - http_client
-// - db_client
-// - &cache or redis
-// - kafka
-// and any helper functions to help make application commands easier
+/// Contains any helper functions to help make writing application command handlers easier
+// MAKE SURE THIS IS THREAD SAFE AND USABLE WITHOUT A MUTEX!!
 pub struct ApplicationCommandUtilities {
-    http_client: DiscordHttpClient,
-    application_id: Id<ApplicationMarker>,
+    pub http_client: DiscordHttpClient,
+    pub application_id: Id<ApplicationMarker>,
+}
+
+pub struct ApplicationCommandHandlers {
+    pub utilities: Arc<ApplicationCommandUtilities>,
     eula_command_handler: EULACommandHandler,
     admin_command_handler: AdminCommandHandler,
 }
 
-impl ApplicationCommandUtilities {
-    pub async fn new(config: &Config) -> Result<Self, Box<dyn Error>> {
-        let http_client = DiscordHttpClient::new(config.token.clone());
-        let application_id = {
-            let response = http_client.current_user_application().exec().await?;
-            response.model().await?.id
-        };
-
-        Ok(Self::new_with_application_id(config, application_id))
-    }
-
-    #[allow(dead_code)]
-    pub fn new_with_application_id(config: &Config, application_id: Id<ApplicationMarker>) -> Self {
-        Self {
-            http_client: DiscordHttpClient::new(config.token.clone()),
-            application_id,
-            eula_command_handler: EULACommandHandler {
-                http_client: DiscordHttpClient::new(config.token.clone()),
-                application_id,
-            },
-            admin_command_handler: AdminCommandHandler {},
-        }
-    }
-
-    pub async fn register_all_application_commands(
-        &self,
-        debug_guild: Option<Id<GuildMarker>>,
-    ) -> Result<(), Box<dyn Error>> {
-        let commands = vec![
-            PingCommandHander::to_command(debug_guild),
-            MatchmakingCommandHandler::to_command(debug_guild),
-            AdminCommandHandler::to_command(debug_guild),
-            EULACommandHandler::to_command(debug_guild),
-        ];
-
-        // TODO: In the future, only set as guild commands if we're running in production mode or the debug_guild is empty
-        let res = self
-            .http_client
-            .interaction(self.application_id)
-            .set_guild_commands(debug_guild.unwrap(), commands.as_slice())
-            .exec()
-            .await?
-            .models()
-            .await?;
-
-        debug!(commands = %format!("{:?}", res), "Successfully set guild commands");
-
-        Ok(())
+impl ApplicationCommandHandlers {
+    pub async fn new() -> Result<Self, Box<dyn Error>> {
+        let utilities = Arc::new(ApplicationCommandUtilities::new().await?);
+        Ok(Self {
+            utilities: utilities.clone(),
+            eula_command_handler: EULACommandHandler::new(utilities.clone()),
+            admin_command_handler: AdminCommandHandler::new(utilities.clone()),
+        })
     }
 
     pub async fn on_command_receive(
@@ -105,6 +63,9 @@ impl ApplicationCommandUtilities {
 
         let _command_id = command.data.id;
         let command_name = command.data.name.as_str();
+
+        debug!(name = %command_name, "Handling application command");
+
         match command_name {
             "ping" => {
                 // Respond with `Pong` with an ephemeral message and the current ping in ms
@@ -121,8 +82,9 @@ impl ApplicationCommandUtilities {
                 );
 
                 let _res = self
+                    .utilities
                     .http_client
-                    .interaction(self.application_id)
+                    .interaction(self.utilities.application_id)
                     .interaction_callback(command.id, command.token.as_str(), &message)
                     .exec()
                     .await?;
@@ -146,9 +108,54 @@ impl ApplicationCommandUtilities {
             }
             "admin" => {
                 // Admin related settings
+                self.admin_command_handler.on_command_called(command).await;
             }
             _ => debug!(command_name = %command_name, "Unhandled application command"),
         }
+
+        Ok(())
+    }
+}
+
+impl ApplicationCommandUtilities {
+    pub async fn new() -> Result<Self, Box<dyn Error>> {
+        let http_client = DiscordHttpClient::new(crate::CONFIG.token.clone());
+        let application_id = {
+            let response = http_client.current_user_application().exec().await?;
+            response.model().await?.id
+        };
+
+        Ok(Self::new_with_application_id(application_id))
+    }
+
+    pub fn new_with_application_id(application_id: Id<ApplicationMarker>) -> Self {
+        Self {
+            http_client: DiscordHttpClient::new(crate::CONFIG.token.clone()),
+            application_id,
+        }
+    }
+
+    pub async fn register_all_application_commands(&self) -> Result<(), Box<dyn Error>> {
+        let debug_guild = crate::CONFIG.debug_guild_id.clone();
+
+        let commands = vec![
+            PingCommandHander::to_command(debug_guild),
+            MatchmakingCommandHandler::to_command(debug_guild),
+            AdminCommandHandler::to_command(debug_guild),
+            EULACommandHandler::to_command(debug_guild),
+        ];
+
+        // TODO: In the future, only set as guild commands if we're not running in production mode or the debug_guild is not empty
+        let res = self
+            .http_client
+            .interaction(self.application_id)
+            .set_guild_commands(debug_guild.unwrap(), commands.as_slice())
+            .exec()
+            .await?
+            .models()
+            .await?;
+
+        debug!(commands = %format!("{:?}", res), "Successfully set guild commands");
 
         Ok(())
     }

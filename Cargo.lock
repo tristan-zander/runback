@@ -452,6 +452,7 @@ dependencies = [
  "common",
  "figment",
  "futures",
+ "lazy_static",
  "serde",
  "tokio",
  "tracing",
