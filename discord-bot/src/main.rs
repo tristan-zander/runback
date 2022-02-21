@@ -1,5 +1,7 @@
 #[macro_use]
 extern crate tracing;
+#[macro_use]
+extern crate lazy_static;
 
 use config::Config;
 use futures::stream::StreamExt;
@@ -15,6 +17,11 @@ mod client;
 mod config;
 mod interactions;
 
+// DO NOT STORE THE CONFIG FOR LONG PERIODS OF TIME! IT CAN BE CHANGED ON A WHIM (in the future)
+lazy_static! {
+    static ref CONFIG: Arc<Box<Config>> = Arc::new(Box::new(Config::new().unwrap()));
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     tracing_subscriber::fmt()
@@ -26,9 +33,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // tracing_log::LogTracer::init()?;
 
-    let config = Config::new()?;
-
-    let interactions = Arc::new(InteractionHandler::init(&config).await?);
+    let interactions = Arc::new(InteractionHandler::init().await?);
 
     // Register guild commands
     info!("Registered guild commands");
@@ -38,7 +43,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let scheme = ShardScheme::Auto;
 
     // Use intents to only receive guild message events.
-    let (cluster, mut events) = Cluster::builder(config.token.to_owned(), Intents::GUILD_MESSAGES)
+    let (cluster, mut events) = Cluster::builder(CONFIG.token.clone(), Intents::GUILD_MESSAGES)
         .shard_scheme(scheme)
         .build()
         .await?;

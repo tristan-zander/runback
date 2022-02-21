@@ -7,11 +7,21 @@ use serde::{Deserialize, Serialize};
 use std::error::Error;
 use twilight_model::id::{marker::GuildMarker, Id};
 
-#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Config {
     pub token: String,
     pub debug_guild_id: Option<Id<GuildMarker>>,
     pub log_level: LogLevel,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            token: Default::default(),
+            debug_guild_id: Default::default(),
+            log_level: Default::default(),
+        }
+    }
 }
 
 impl Config {

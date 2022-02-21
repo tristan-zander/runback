@@ -1,4 +1,4 @@
-use std::error::Error;
+use std::{error::Error, sync::Arc};
 
 use twilight_model::{
     application::{
@@ -16,15 +16,13 @@ use twilight_util::builder::{
     CallbackDataBuilder,
 };
 
-use super::ApplicationCommand;
+use super::{ApplicationCommand, ApplicationCommandUtilities};
 
 // Consider getting this path from an environment variable
 const EULA: &'static str = include_str!("../../../../EULA.txt");
 
-#[derive(Debug)]
 pub(super) struct EULACommandHandler {
-    pub http_client: twilight_http::Client,
-    pub application_id: Id<ApplicationMarker>,
+    pub command_utils: Arc<ApplicationCommandUtilities>,
 }
 
 impl ApplicationCommand for EULACommandHandler {
@@ -56,10 +54,13 @@ impl ApplicationCommand for EULACommandHandler {
 }
 
 impl EULACommandHandler {
-    #[tracing::instrument]
+    pub fn new(command_utils: Arc<ApplicationCommandUtilities>) -> Self {
+        Self { command_utils }
+    }
+
     pub async fn on_command_called(
         &self,
-        command: &Box<twilight_model::application::interaction::ApplicationCommand>,
+        command: &Box<DiscordApplicationCommand>,
     ) -> Result<(), Box<dyn Error>> {
         debug!(options = %format!("{:?}", command.data.options));
 
@@ -74,7 +75,7 @@ impl EULACommandHandler {
                                 .flags(MessageFlags::EPHEMERAL)
                                 .build(),
                         );
-                        self.send_message(command, &message).await?;
+                        self.command_utils.send_message(command, &message).await?;
 
                         error!(
                             accepted = %accepted.clone(),
@@ -89,7 +90,7 @@ impl EULACommandHandler {
                                 .flags(MessageFlags::EPHEMERAL)
                                 .build(),
                         );
-                    self.send_message(command, &message).await?;
+                    self.command_utils.send_message(command, &message).await?;
                 }
                 _ => {}
             }
@@ -102,20 +103,20 @@ impl EULACommandHandler {
                 .build(),
         );
 
-        self.send_message(command, &message).await?;
+        self.command_utils.send_message(command, &message).await?;
 
         Ok(())
     }
 
-    #[tracing::instrument]
     async fn send_message(
         &self,
         command: &Box<DiscordApplicationCommand>,
         message: &InteractionResponse,
     ) -> Result<(), Box<dyn Error>> {
         let _res = self
+            .command_utils
             .http_client
-            .interaction(self.application_id)
+            .interaction(self.command_utils.application_id)
             .interaction_callback(command.id, command.token.as_str(), message)
             .exec()
             .await?;
