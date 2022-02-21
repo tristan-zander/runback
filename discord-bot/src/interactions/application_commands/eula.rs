@@ -19,7 +19,7 @@ use twilight_util::builder::{
 use super::{ApplicationCommand, ApplicationCommandUtilities};
 
 // Consider getting this path from an environment variable
-const EULA: &'static str = include_str!("../../../../EULA.txt");
+const EULA: &'static str = include_str!("../../../../EULA.md");
 
 pub(super) struct EULACommandHandler {
     pub command_utils: Arc<ApplicationCommandUtilities>,
