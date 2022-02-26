@@ -10,6 +10,8 @@ common = { path = "../common" }
 figment = { version = "0.10", features = ["toml", "env"] }
 serde = "1.0.133"
 lazy_static = "1.4.0"
+sea-orm = { version = "0.6.0", features = [ "sqlx-postgres", "runtime-tokio-rustls", "macros", "with-chrono", "sqlx-chrono" ], default-features = false }
+chrono = "0.4.19"
 # Twilight.rs
 twilight-cache-inmemory = "0.9.0"
 twilight-gateway = "0.9.0"
