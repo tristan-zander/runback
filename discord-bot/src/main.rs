@@ -2,6 +2,8 @@
 extern crate tracing;
 #[macro_use]
 extern crate lazy_static;
+#[macro_use]
+extern crate sea_orm;
 
 use config::Config;
 use futures::stream::StreamExt;
@@ -16,6 +18,7 @@ use crate::interactions::InteractionHandler;
 mod client;
 mod config;
 mod interactions;
+mod entities;
 
 // DO NOT STORE THE CONFIG FOR LONG PERIODS OF TIME! IT CAN BE CHANGED ON A WHIM (in the future)
 lazy_static! {
