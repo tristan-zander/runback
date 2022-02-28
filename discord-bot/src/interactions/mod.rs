@@ -1,7 +1,9 @@
 pub mod application_commands;
 
-use std::error::Error;
+use std::{error::Error, sync::Arc};
 
+use entity::sea_orm::DatabaseConnection;
+use lazy_static::__Deref;
 use twilight_gateway::Shard;
 use twilight_model::gateway::payload::incoming::InteractionCreate;
 
@@ -14,18 +16,18 @@ pub struct InteractionHandler {
 }
 
 impl InteractionHandler {
-    pub async fn init() -> Result<Self, Box<dyn Error>> {
-        let application_command_handlers = ApplicationCommandHandlers::new().await?;
+    pub async fn init(db: Arc<Box<DatabaseConnection>>) -> Result<Self, Box<dyn Error>> {
+        let application_command_handlers = ApplicationCommandHandlers::new(db).await?;
         application_command_handlers.utilities.register_all_application_commands().await?;
         Ok(Self {
             application_command_handlers,
         })
     }
 
-    pub async fn handle_interaction<'a>(
+    pub async fn handle_interaction<'shard>(
         &self,
         interaction: Box<InteractionCreate>,
-        _shard: &'a Shard,
+        _shard: &'shard Shard,
     ) {
         debug!(interaction = %format!("{:?}", interaction), "Received interaction");
         let res = match &**interaction {
@@ -37,7 +39,9 @@ impl InteractionHandler {
             // twilight_model::application::interaction::Interaction::ApplicationCommandAutocomplete(
             //     _,
             // ) => todo!(),
-            // twilight_model::application::interaction::Interaction::MessageComponent(_) => todo!(),
+            twilight_model::application::interaction::Interaction::MessageComponent(m) => {
+                self.application_command_handlers.on_message_component_event(m.deref()).await
+            },
             _ => {
                 debug!(interaction = %format!("{:?}", interaction), "Unhandled interaction");
                 Ok(())

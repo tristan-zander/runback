@@ -2,5 +2,7 @@
 members = [
     "common",
     "discord-bot",
+    "discord-bot/migration",
+    "discord-bot/entity",
     "matchmaking-service"
 ]

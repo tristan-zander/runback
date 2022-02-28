@@ -1,15 +1,19 @@
 mod admin;
 mod eula;
+mod matchmaking;
 
 use std::{error::Error, sync::Arc};
 
+use entity::sea_orm::DatabaseConnection;
 use twilight_embed_builder::{EmbedBuilder, EmbedFieldBuilder};
 use twilight_http::Client as DiscordHttpClient;
 use twilight_model::{
     application::{
         callback::InteractionResponse,
         command::{Command, CommandType},
-        interaction::ApplicationCommand as DiscordApplicationCommand,
+        interaction::{
+            ApplicationCommand as DiscordApplicationCommand, MessageComponentInteraction,
+        },
     },
     channel::message::MessageFlags,
     id::{
@@ -25,7 +29,9 @@ use twilight_util::builder::{
     CallbackDataBuilder,
 };
 
-use crate::config::Config;
+use crate::{
+    config::Config, interactions::application_commands::matchmaking::MatchmakingCommandHandler,
+};
 
 use self::{admin::AdminCommandHandler, eula::EULACommandHandler};
 
@@ -34,6 +40,7 @@ use self::{admin::AdminCommandHandler, eula::EULACommandHandler};
 pub struct ApplicationCommandUtilities {
     pub http_client: DiscordHttpClient,
     pub application_id: Id<ApplicationMarker>,
+    pub db: Arc<Box<DatabaseConnection>>,
 }
 
 pub struct ApplicationCommandHandlers {
@@ -43,8 +50,8 @@ pub struct ApplicationCommandHandlers {
 }
 
 impl ApplicationCommandHandlers {
-    pub async fn new() -> Result<Self, Box<dyn Error>> {
-        let utilities = Arc::new(ApplicationCommandUtilities::new().await?);
+    pub async fn new(db: Arc<Box<DatabaseConnection>>) -> Result<Self, Box<dyn Error>> {
+        let utilities = Arc::new(ApplicationCommandUtilities::new(db).await?);
         Ok(Self {
             utilities: utilities.clone(),
             eula_command_handler: EULACommandHandler::new(utilities.clone()),
@@ -61,10 +68,10 @@ impl ApplicationCommandHandlers {
         // Send a message to the user, saying that a server administrator needs to accept the eula
         // }
 
-        let _command_id = command.data.id;
+        let command_id = command.data.id;
         let command_name = command.data.name.as_str();
 
-        debug!(name = %command_name, "Handling application command");
+        debug!(name = %command_name, id = %command_id, "Handling application command");
 
         match command_name {
             "ping" => {
@@ -115,21 +122,36 @@ impl ApplicationCommandHandlers {
 
         Ok(())
     }
+
+    pub async fn on_message_component_event(
+        &self,
+        message: &MessageComponentInteraction,
+    ) -> Result<(), Box<dyn Error>> {
+        debug!(message = %format!("{:?}", message), "TODO: handle message component interaction");
+
+        // TODO: respond to message component interactions
+
+        Ok(())
+    }
 }
 
 impl ApplicationCommandUtilities {
-    pub async fn new() -> Result<Self, Box<dyn Error>> {
+    pub async fn new(db: Arc<Box<DatabaseConnection>>) -> Result<Self, Box<dyn Error>> {
         let http_client = DiscordHttpClient::new(crate::CONFIG.token.clone());
         let application_id = {
             let response = http_client.current_user_application().exec().await?;
             response.model().await?.id
         };
 
-        Ok(Self::new_with_application_id(application_id))
+        Ok(Self::new_with_application_id(db, application_id))
     }
 
-    pub fn new_with_application_id(application_id: Id<ApplicationMarker>) -> Self {
+    pub fn new_with_application_id(
+        db: Arc<Box<DatabaseConnection>>,
+        application_id: Id<ApplicationMarker>,
+    ) -> Self {
         Self {
+            db,
             http_client: DiscordHttpClient::new(crate::CONFIG.token.clone()),
             application_id,
         }
@@ -202,44 +224,6 @@ impl ApplicationCommand for PingCommandHander {
 
         let comm = builder.build();
         debug!(comm = %format!("{:?}", comm), "Created command");
-        return comm;
-    }
-}
-
-struct MatchmakingCommandHandler;
-
-impl ApplicationCommand for MatchmakingCommandHandler {
-    fn to_command(debug_guild: Option<Id<GuildMarker>>) -> Command {
-        let mut builder = CommandBuilder::new(
-            "mm".into(),
-            "Matchmaking commands".into(),
-            CommandType::ChatInput,
-        )
-        .option(
-            SubCommandBuilder::new("show-matches".into(), "Show the matchmaking menu".into())
-                .build(),
-        )
-        .option(
-            SubCommandBuilder::new(
-                "settings".into(),
-                "View and update settings such as default character".into(),
-            )
-            .build(),
-        )
-        .option(
-            SubCommandBuilder::new(
-                "end-session".into(),
-                "Finish your matchmaking session".into(),
-            )
-            .build(),
-        );
-
-        if let Some(id) = debug_guild {
-            builder = builder.guild_id(id);
-        }
-
-        let comm = builder.build();
-        debug!(command = %format!("{:?}", comm), "Created command!");
         return comm;
     }
 }

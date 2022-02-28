@@ -2,14 +2,17 @@
 extern crate tracing;
 #[macro_use]
 extern crate lazy_static;
-#[macro_use]
-extern crate sea_orm;
 
 use config::Config;
+use entity::sea_orm::{ConnectOptions, Database};
 use futures::stream::StreamExt;
+use migration::DbErr;
 use std::{error::Error, sync::Arc};
 use twilight_cache_inmemory::{InMemoryCache, ResourceType};
-use twilight_gateway::{cluster::ShardScheme, Cluster, Intents};
+use twilight_gateway::{
+    cluster::{ClusterStartError, ShardScheme},
+    Cluster, Intents,
+};
 
 use twilight_model::gateway::event::Event;
 
@@ -18,27 +21,79 @@ use crate::interactions::InteractionHandler;
 mod client;
 mod config;
 mod interactions;
-mod entities;
 
 // DO NOT STORE THE CONFIG FOR LONG PERIODS OF TIME! IT CAN BE CHANGED ON A WHIM (in the future)
 lazy_static! {
     static ref CONFIG: Arc<Box<Config>> = Arc::new(Box::new(Config::new().unwrap()));
 }
 
+#[derive(Debug)]
+enum MainError {
+    DbErr(DbErr),
+    ClusterStartErr(ClusterStartError),
+    UnknownErr(RunbackError),
+    DynamicErr(Box<dyn Error>),
+}
+
+#[derive(Debug)]
+pub struct RunbackError {
+    pub message: String,
+}
+
+impl std::fmt::Display for RunbackError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.message)
+    }
+}
+
+impl From<DbErr> for MainError {
+    fn from(e: DbErr) -> Self {
+        Self::DbErr(e)
+    }
+}
+
+impl From<ClusterStartError> for MainError {
+    fn from(e: ClusterStartError) -> Self {
+        Self::ClusterStartErr(e)
+    }
+}
+
+impl From<Box<dyn Error>> for MainError {
+    fn from(e: Box<dyn Error>) -> Self {
+        Self::DynamicErr(e)
+    }
+}
+
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+async fn main() -> Result<(), MainError> {
     tracing_subscriber::fmt()
         .with_level(true)
         .with_target(true)
-        .with_max_level(tracing::Level::DEBUG)
+        .with_max_level(Into::<tracing::Level>::into(CONFIG.as_ref().log_level))
         //.json()
         .init();
 
+    let db = &CONFIG.db;
+    let pass = if db.password.is_some() {
+        format!(":{}", db.password.as_ref().unwrap())
+    } else {
+        "".to_string()
+    };
+
+    let connection_string = format!(
+        "{}://{}{}@{}/{}{}",
+        db.protocol, db.username, pass, db.host, db.db_name, db.extra_options
+    );
+
+    let opt = ConnectOptions::new(connection_string);
+
+    // Arc<Box> is easier than setting up a static lifetime reference for the DatabaseConnection
+    let db = Arc::new(Box::new(Database::connect(opt).await?));
+    info!("Successfully connected to database.");
+
     // tracing_log::LogTracer::init()?;
 
-    let interactions = Arc::new(InteractionHandler::init().await?);
-
-    // Register guild commands
+    let interactions = Arc::new(InteractionHandler::init(db.clone()).await?); // Register guild commands
     info!("Registered guild commands");
 
     // This is the default scheme. It will automatically create as many
@@ -97,5 +152,5 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
     }
 
-    Ok(())
+    return Ok(());
 }

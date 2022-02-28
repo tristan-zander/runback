@@ -1,5 +1,8 @@
 use std::{error::Error, sync::Arc};
 
+use chrono::Utc;
+use entity::sea_orm::{ActiveModelTrait, EntityTrait, IntoActiveModel, Set};
+use lazy_static::__Deref;
 use twilight_model::{
     application::{
         callback::InteractionResponse,
@@ -15,6 +18,8 @@ use twilight_util::builder::{
     command::{CommandBuilder, StringBuilder},
     CallbackDataBuilder,
 };
+
+use crate::MainError;
 
 use super::{ApplicationCommand, ApplicationCommandUtilities};
 
@@ -64,6 +69,18 @@ impl EULACommandHandler {
     ) -> Result<(), Box<dyn Error>> {
         debug!(options = %format!("{:?}", command.data.options));
 
+        let gid: i64 = if let Some(gid) = command.guild_id {
+            gid.get().try_into().unwrap()
+        } else {
+            let message = InteractionResponse::ChannelMessageWithSource(
+                CallbackDataBuilder::new()
+                    .content("You cannot use this command in a DM.".into())
+                    .flags(MessageFlags::EPHEMERAL)
+                    .build(),
+            );
+            return self.command_utils.send_message(command, &message).await;
+        };
+
         let options = &command.data.options;
         if options.len() > 0 && options[0].name.as_str() == "accept" {
             match &options[0].value {
@@ -84,6 +101,45 @@ impl EULACommandHandler {
 
                         return Ok(());
                     }
+
+                    match entity::matchmaking::Setting::find_by_id(gid)
+                        .one(self.command_utils.db.deref().as_ref())
+                        .await?
+                    {
+                        Some(existing_settings) => {
+                            if existing_settings.has_accepted_eula.is_some() {
+                                let message = InteractionResponse::ChannelMessageWithSource(
+                                    CallbackDataBuilder::new()
+                                        .content(
+                                            "Looks like you've already accepted the EULA.".into(),
+                                        )
+                                        .flags(MessageFlags::EPHEMERAL)
+                                        .build(),
+                                );
+                                self.command_utils.send_message(command, &message).await?;
+                                return Ok(());
+                            } else {
+                                let mut active = existing_settings.into_active_model();
+                                active.has_accepted_eula = Set(Some(Utc::now()));
+                                active
+                                    .update(self.command_utils.db.deref().as_ref())
+                                    .await?;
+                            }
+                        }
+                        None => {
+                            let settings = entity::matchmaking::settings::ActiveModel {
+                                guild_id: Set(gid),
+                                has_accepted_eula: Set(Some(Utc::now())),
+                                last_updated: Set(Utc::now()),
+                                ..Default::default()
+                            };
+
+                            settings
+                                .insert(self.command_utils.db.deref().as_ref())
+                                .await?;
+                        }
+                    };
+
                     let message = InteractionResponse::ChannelMessageWithSource(
                             CallbackDataBuilder::new()
                                 .content("Okay, thanks for accepted the EULA. You may now use Runback's services.".into())
