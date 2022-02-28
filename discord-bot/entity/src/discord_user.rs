@@ -13,21 +13,21 @@ pub mod user {
     pub struct Model {
         #[sea_orm(primary_key)]
         /// Discord user id
-        pub user_id: u64,
+        pub user_id: i64,
         pub active_session: i32,
     }
 
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
     pub enum Relation {
         #[sea_orm(
-            belongs_to = "crate::entities::matchmaking::active_session::Entity",
+            belongs_to = "crate::matchmaking::active_session::Entity",
             from = "Column::ActiveSession",
-            to = "crate::entities::matchmaking::active_session::Column::Id"
+            to = "crate::matchmaking::active_session::Column::Id"
         )]
         Session,
     }
 
-    impl Related<crate::entities::matchmaking::active_session::Entity> for Entity {
+    impl Related<crate::matchmaking::active_session::Entity> for Entity {
         fn to() -> RelationDef {
             Relation::Session.def()
         }

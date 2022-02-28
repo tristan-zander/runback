@@ -6,12 +6,18 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+# Core
 common = { path = "../common" }
+entity = { path = "entity" }
+migration = { path = "migration" }
 figment = { version = "0.10", features = ["toml", "env"] }
 serde = "1.0.133"
 lazy_static = "1.4.0"
-sea-orm = { version = "0.6.0", features = [ "sqlx-postgres", "runtime-tokio-rustls", "macros", "with-chrono", "sqlx-chrono" ], default-features = false }
 chrono = "0.4.19"
+tokio = { version = "1.16", features = ["full"]}
+futures = "0.3.19"
+tracing = "0.1.29"
+tracing-subscriber = { version = "*", features = ["json"] }
 # Twilight.rs
 twilight-cache-inmemory = "0.9.0"
 twilight-gateway = "0.9.0"
@@ -21,10 +27,3 @@ twilight-standby = "0.9.0"
 twilight-embed-builder = "0.9.0"
 twilight-mention = "0.9.0"
 twilight-util = { version = "0.9.0", features = ["full"] }
-# Async utils
-tokio = { version = "1.16", features = ["full"]}
-futures = "0.3.19"
-# For logging
-tracing = "0.1.29"
-tracing-subscriber = { version = "*", features = ["json"] }
-tracing-log = "*"
