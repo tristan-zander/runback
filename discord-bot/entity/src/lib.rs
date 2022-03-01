@@ -91,9 +91,13 @@ impl<T: std::fmt::Debug> TryGetable for IdWrapper<T> {
         pre: &str,
         col: &str,
     ) -> Result<Self, sea_orm::TryGetError> {
-        let val: i64 = res.try_get(pre, col).map_err(sea_orm::TryGetError::DbErr)?;
-        debug!(val = %val, "TryGetable");
-        IdWrapper::from_database_i64(val).ok_or(sea_orm::TryGetError::Null)
+        let val: Option<i64> = res.try_get(pre, col).map_err(sea_orm::TryGetError::DbErr)?;
+        if val.is_none() {
+            return Err(sea_orm::TryGetError::Null);
+        }
+        unsafe {
+            IdWrapper::from_database_i64(val.unwrap_unchecked()).ok_or(sea_orm::TryGetError::Null)
+        }
     }
 }
 
@@ -123,7 +127,7 @@ impl<T> ValueType for IdWrapper<T> {
     }
 
     fn column_type() -> sea_orm::sea_query::ColumnType {
-        sea_orm::sea_query::ColumnType::BigInteger(None)
+        i64::column_type()
     }
 }
 
