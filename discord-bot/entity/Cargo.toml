@@ -10,3 +10,4 @@ sea-orm = { version = "0.6.0", features = [ "sqlx-postgres", "runtime-tokio-rust
 chrono = "0.4.19"
 twilight-model = "0.9.0"
 serde = "1.0.133"
+tracing = "0.1.29"
