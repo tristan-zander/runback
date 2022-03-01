@@ -8,7 +8,7 @@ use twilight_model::{
         component::{select_menu::SelectMenuOption, ActionRow, Component, SelectMenu},
         interaction::{
             application_command::{CommandDataOption, CommandOptionValue},
-            ApplicationCommand as DiscordApplicationCommand,
+            ApplicationCommand as DiscordApplicationCommand, MessageComponentInteraction,
         },
     },
     channel::{message::MessageFlags, GuildChannel, TextChannel},
@@ -82,6 +82,42 @@ impl AdminCommandHandler {
         }
     }
 
+    pub async fn on_message_component_event(
+        &self,
+        id_parts: Vec<&str>,
+        component: &MessageComponentInteraction,
+    ) -> Result<(), Box<dyn Error>> {
+        let sub_group = *id_parts.get(1).unwrap();
+        let action_id = *id_parts.get(2).unwrap();
+
+        match sub_group {
+            "mm" => {
+                // Matchmaking settings handler
+                match action_id {
+                    "channel" => {
+                        self.set_matchmaking_channel(component).await?;
+                    }
+                    _ => {
+                        warn!(action = %action_id, group = %sub_group, "Unknown admin custom action received")
+                    }
+                }
+            }
+            _ => {
+                warn!(sub_group = %sub_group, custom_id = %&component.data.custom_id, "Unknown admin component received")
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn set_matchmaking_channel(
+        &self,
+        component: &MessageComponentInteraction,
+    ) -> Result<(), Box<dyn Error>> {
+
+        Ok(())
+    }
+
     pub async fn send_matchamking_settings(
         &self,
         command: &Box<DiscordApplicationCommand>,
@@ -124,7 +160,7 @@ impl AdminCommandHandler {
                 .flags(MessageFlags::EPHEMERAL)
                 .components(vec![Component::ActionRow(ActionRow {
                     components: vec![Component::SelectMenu(SelectMenu {
-                        custom_id: "matchmaking_settings__matchmaking_channel".into(),
+                        custom_id: "admin:mm:channel".into(),
                         disabled: false,
                         max_values: Some(1),
                         min_values: Some(1),

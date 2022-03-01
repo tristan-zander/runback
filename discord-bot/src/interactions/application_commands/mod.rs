@@ -117,7 +117,7 @@ impl ApplicationCommandHandlers {
                 // Admin related settings
                 self.admin_command_handler.on_command_called(command).await;
             }
-            _ => debug!(command_name = %command_name, "Unhandled application command"),
+            _ => warn!(command_name = %command_name, "Unhandled application command"),
         }
 
         Ok(())
@@ -129,7 +129,20 @@ impl ApplicationCommandHandlers {
     ) -> Result<(), Box<dyn Error>> {
         debug!(message = %format!("{:?}", message), "TODO: handle message component interaction");
 
-        // TODO: respond to message component interactions
+        let custom_id = &message.data.custom_id;
+        let component_type = message.data.component_type;
+
+        let id_parts = custom_id.split(':').collect::<Vec<_>>();
+        let namespace: &str = id_parts[0];
+
+        let res = match namespace {
+            "admin" => {
+                self.admin_command_handler.on_message_component_event(id_parts, message).await?
+            }
+            _ => {
+                warn!(custom_id = %custom_id, "Unknown message component event")
+            }
+        };
 
         Ok(())
     }

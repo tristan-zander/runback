@@ -69,8 +69,8 @@ impl EULACommandHandler {
     ) -> Result<(), Box<dyn Error>> {
         debug!(options = %format!("{:?}", command.data.options));
 
-        let gid: i64 = if let Some(gid) = command.guild_id {
-            gid.get().try_into().unwrap()
+        let gid = if let Some(gid) = command.guild_id {
+            gid
         } else {
             let message = InteractionResponse::ChannelMessageWithSource(
                 CallbackDataBuilder::new()
@@ -102,10 +102,10 @@ impl EULACommandHandler {
                         return Ok(());
                     }
 
-                    match entity::matchmaking::Setting::find_by_id(gid)
+                    let res = entity::matchmaking::Setting::find_by_id(gid.into())
                         .one(self.command_utils.db.deref().as_ref())
-                        .await?
-                    {
+                        .await?;
+                    match res {
                         Some(existing_settings) => {
                             if existing_settings.has_accepted_eula.is_some() {
                                 let message = InteractionResponse::ChannelMessageWithSource(
@@ -128,7 +128,7 @@ impl EULACommandHandler {
                         }
                         None => {
                             let settings = entity::matchmaking::settings::ActiveModel {
-                                guild_id: Set(gid),
+                                guild_id: Set(gid.into()),
                                 has_accepted_eula: Set(Some(Utc::now())),
                                 last_updated: Set(Utc::now()),
                                 ..Default::default()
