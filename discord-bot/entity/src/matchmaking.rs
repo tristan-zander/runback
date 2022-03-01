@@ -47,34 +47,24 @@ pub mod settings {
         Id,
     };
 
+    use crate::IdWrapper;
+
     use super::*;
 
-    #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel, DeriveActiveModelBehavior)]
     #[sea_orm(table_name = "matchmaking_settings")]
     pub struct Model {
-        #[sea_orm(primary_key, unique, auto_increment = false)]
-        pub guild_id: i64,
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub guild_id: IdWrapper<GuildMarker>,
         #[sea_orm(default_value = Utc::now())]
         pub last_updated: DateTimeUtc,
         /// Set the date that a guild admin accepted the EULA
         // TODO: Make a general Guild table and put this field there
         pub has_accepted_eula: Option<DateTimeUtc>,
         /// The channel ID for where the matchmaking panel should be posted.
-        pub channel_id: Option<i64>,
+        pub channel_id: Option<IdWrapper<ChannelMarker>>,
         #[sea_orm(default_value = false)]
         pub threads_are_private: bool,
-    }
-
-    impl Default for Model {
-        fn default() -> Self {
-            Self {
-                guild_id: 0,
-                last_updated: Utc::now(),
-                has_accepted_eula: None,
-                channel_id: None,
-                threads_are_private: false,
-            }
-        }
     }
 
     impl Model {
@@ -92,8 +82,6 @@ pub mod settings {
 
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
     pub enum Relation {}
-
-    impl ActiveModelBehavior for ActiveModel {}
 }
 
 /// The matchmaking panel that users can interact with

@@ -681,6 +681,7 @@ dependencies = [
  "chrono",
  "sea-orm",
  "serde",
+ "tracing",
  "twilight-model",
 ]
 
