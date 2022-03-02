@@ -1,5 +1,7 @@
 use std::{error::Error, sync::Arc};
 
+use chrono::Utc;
+use entity::sea_orm::{ActiveModelTrait, EntityTrait, IntoActiveModel};
 use twilight_embed_builder::EmbedBuilder;
 use twilight_model::{
     application::{
@@ -12,12 +14,17 @@ use twilight_model::{
         },
     },
     channel::{message::MessageFlags, GuildChannel, TextChannel},
-    id::{marker::GuildMarker, Id},
+    id::{
+        marker::{ChannelMarker, GuildMarker},
+        Id,
+    },
 };
 use twilight_util::builder::{
     command::{CommandBuilder, SubCommandBuilder, SubCommandGroupBuilder},
     CallbackDataBuilder,
 };
+
+use crate::RunbackError;
 
 use super::{ApplicationCommand, ApplicationCommandUtilities};
 
@@ -114,6 +121,50 @@ impl AdminCommandHandler {
         &self,
         component: &MessageComponentInteraction,
     ) -> Result<(), Box<dyn Error>> {
+        let channel_id: Id<ChannelMarker> = Id::new(
+            component
+                .data
+                .values
+                .get(0)
+                .ok_or(format!(
+                    "Could not validate channel_id {} string as valid ID",
+                    component.data.values[0]
+                ))?
+                .as_str()
+                .parse::<u64>()?,
+        );
+
+        let guild_id = component
+            .guild_id
+            .ok_or("You cannot use Runback in a DM.")?;
+
+        let setting = entity::matchmaking::Setting::find_by_id(guild_id.into())
+            .one(self.command_utils.db_ref())
+            .await?;
+
+        let setting = if setting.is_some() {
+            let mut setting = unsafe { setting.unwrap_unchecked() }.into_active_model();
+            setting.channel_id = entity::sea_orm::Set(Some(channel_id.into()));
+            setting.update(self.command_utils.db_ref()).await?;
+            setting
+        } else {
+            let setting = entity::matchmaking::settings::Model {
+                guild_id: guild_id.into(),
+                last_updated: Utc::now(),
+                channel_id: Some(channel_id.into()),
+                has_accepted_eula: None,
+                threads_are_private: false,
+            }
+            .into_active_model();
+            setting
+                .into_active_model()
+                .insert(self.command_utils.db_ref())
+                .await?;
+                setting
+        };
+
+        // TODO: Add logic to post the matchmaking panel to setting.channel_id
+        // TODO: Respond to the user
 
         Ok(())
     }

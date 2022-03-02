@@ -2,7 +2,6 @@ use std::{error::Error, sync::Arc};
 
 use chrono::Utc;
 use entity::sea_orm::{ActiveModelTrait, EntityTrait, IntoActiveModel, Set};
-use lazy_static::__Deref;
 use twilight_model::{
     application::{
         callback::InteractionResponse,
@@ -103,7 +102,7 @@ impl EULACommandHandler {
                     }
 
                     let res = entity::matchmaking::Setting::find_by_id(gid.into())
-                        .one(self.command_utils.db.deref().as_ref())
+                        .one(self.command_utils.db_ref())
                         .await?;
                     match res {
                         Some(existing_settings) => {
@@ -122,7 +121,7 @@ impl EULACommandHandler {
                                 let mut active = existing_settings.into_active_model();
                                 active.has_accepted_eula = Set(Some(Utc::now()));
                                 active
-                                    .update(self.command_utils.db.deref().as_ref())
+                                    .update(self.command_utils.db_ref())
                                     .await?;
                             }
                         }
@@ -135,7 +134,7 @@ impl EULACommandHandler {
                             };
 
                             settings
-                                .insert(self.command_utils.db.deref().as_ref())
+                                .insert(self.command_utils.db_ref())
                                 .await?;
                         }
                     };

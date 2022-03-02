@@ -137,7 +137,9 @@ impl ApplicationCommandHandlers {
 
         let res = match namespace {
             "admin" => {
-                self.admin_command_handler.on_message_component_event(id_parts, message).await?
+                self.admin_command_handler
+                    .on_message_component_event(id_parts, message)
+                    .await?
             }
             _ => {
                 warn!(custom_id = %custom_id, "Unknown message component event")
@@ -168,6 +170,10 @@ impl ApplicationCommandUtilities {
             http_client: DiscordHttpClient::new(crate::CONFIG.token.clone()),
             application_id,
         }
+    }
+
+    pub fn db_ref(&self) -> &DatabaseConnection {
+        (*self.db).as_ref()
     }
 
     pub async fn register_all_application_commands(&self) -> Result<(), Box<dyn Error>> {
