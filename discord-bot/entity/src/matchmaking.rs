@@ -8,7 +8,7 @@ pub use settings::Entity as Setting;
 pub mod active_session {
     use super::*;
 
-    #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel, DeriveActiveModelBehavior)]
     #[sea_orm(table_name = "matchmaking_sessions")]
     pub struct Model {
         #[sea_orm(primary_key)]
@@ -35,17 +35,11 @@ pub mod active_session {
             Relation::User.def()
         }
     }
-
-    impl ActiveModelBehavior for ActiveModel {}
 }
 
 /// MM settings are set one per server
 pub mod settings {
-    use chrono::Utc;
-    use twilight_model::id::{
-        marker::{ChannelMarker, GuildMarker},
-        Id,
-    };
+    use twilight_model::id::marker::{ChannelMarker, GuildMarker};
 
     use crate::IdWrapper;
 
@@ -86,11 +80,9 @@ pub mod settings {
 
 /// The matchmaking panel that users can interact with
 pub mod panel {
-    use twilight_model::id::{marker::GuildMarker, Id};
-
     use super::*;
 
-    #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel, DeriveActiveModelBehavior)]
     #[sea_orm(table_name = "matchmaking_panels")]
     pub struct Model {
         #[sea_orm(primary_key, auto_increment = false)]
@@ -110,6 +102,4 @@ pub mod panel {
         // ActiveSession,
     // LookingForMatch
     }
-
-    impl ActiveModelBehavior for ActiveModel {}
 }

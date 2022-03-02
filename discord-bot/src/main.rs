@@ -40,6 +40,9 @@ pub struct RunbackError {
     pub message: String,
 }
 
+impl Error for RunbackError {
+}
+
 impl std::fmt::Display for RunbackError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.message)

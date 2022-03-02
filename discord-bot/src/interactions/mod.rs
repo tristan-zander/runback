@@ -30,6 +30,9 @@ impl InteractionHandler {
         _shard: &'shard Shard,
     ) {
         debug!(interaction = %format!("{:?}", interaction), "Received interaction");
+
+        // TODO: Send a deferred message response, followup on it later
+
         let res = match &**interaction {
             // I think this is only for webhook interaction handlers
             twilight_model::application::interaction::Interaction::Ping(_) => Ok(()),
@@ -48,7 +51,7 @@ impl InteractionHandler {
             }
         };
 
-        // TODO: Do some error handling
+        // TODO: Do some error handling, send a message back to the user
         if let Err(e) = res {
             error!(error = %e, "Unhandled interaction error");
         }
