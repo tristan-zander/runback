@@ -165,7 +165,10 @@ async fn main() -> Result<(), RunbackError> {
                 let interaction_ref = interactions.clone();
                 tokio::spawn(async move {
                     let shard = cluster_ref.shard(shard_id).unwrap();
-                    interaction_ref.handle_interaction(i, shard).await?;
+                    let res = interaction_ref.handle_interaction(i, shard).await;
+                    if let Err(e) = res {
+                        error!(error = %e, "Error occurred while handling interactions.");
+                    }
                 });
             }
             _ => trace!(kind = %format!("{:?}", event.kind()), "Unhandled event"),
