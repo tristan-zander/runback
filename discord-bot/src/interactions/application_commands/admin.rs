@@ -5,7 +5,7 @@ use entity::sea_orm::{ActiveModelTrait, EntityTrait, IntoActiveModel};
 use twilight_embed_builder::EmbedBuilder;
 use twilight_model::{
     application::{
-        callback::InteractionResponse,
+        callback::{CallbackData, InteractionResponse},
         command::{Command, CommandType},
         component::{select_menu::SelectMenuOption, ActionRow, Component, SelectMenu},
         interaction::{
@@ -42,7 +42,7 @@ impl std::fmt::Display for AdminCommandHandlerError {
 impl Error for AdminCommandHandlerError {}
 
 pub(super) struct AdminCommandHandler {
-    pub command_utils: Arc<ApplicationCommandUtilities>,
+    pub utils: Arc<ApplicationCommandUtilities>,
 }
 
 impl ApplicationCommand for AdminCommandHandler {
@@ -69,7 +69,9 @@ impl ApplicationCommand for AdminCommandHandler {
 
 impl AdminCommandHandler {
     pub fn new(command_utils: Arc<ApplicationCommandUtilities>) -> Self {
-        Self { command_utils }
+        Self {
+            utils: command_utils,
+        }
     }
 
     pub async fn on_command_called(&self, command: &Box<DiscordApplicationCommand>) {
@@ -139,14 +141,13 @@ impl AdminCommandHandler {
             .ok_or("You cannot use Runback in a DM.")?;
 
         let setting = entity::matchmaking::Setting::find_by_id(guild_id.into())
-            .one(self.command_utils.db_ref())
+            .one(self.utils.db_ref())
             .await?;
 
         let setting = if setting.is_some() {
             let mut setting = unsafe { setting.unwrap_unchecked() }.into_active_model();
             setting.channel_id = entity::sea_orm::Set(Some(channel_id.into()));
-            setting.update(self.command_utils.db_ref()).await?;
-            setting
+            setting.update(self.utils.db_ref()).await?
         } else {
             let setting = entity::matchmaking::settings::Model {
                 guild_id: guild_id.into(),
@@ -158,13 +159,25 @@ impl AdminCommandHandler {
             .into_active_model();
             setting
                 .into_active_model()
-                .insert(self.command_utils.db_ref())
-                .await?;
-                setting
+                .insert(self.utils.db_ref())
+                .await?
         };
 
-        // TODO: Add logic to post the matchmaking panel to setting.channel_id
-        // TODO: Respond to the user
+        // TODO: Produce a Kafka message, saying that this guild's settings have been updated
+        let message = InteractionResponse::UpdateMessage(
+            CallbackDataBuilder::new()
+                .flags(MessageFlags::EPHEMERAL)
+                .content("Successfully set the matchmaking channel. Please wait a few moments for changes to take effect.".into())
+                .build()
+        );
+
+        let _res = self
+            .utils
+            .http_client
+            .interaction(self.utils.application_id)
+            .interaction_callback(component.id, component.token.as_str(), &message)
+            .exec()
+            .await?;
 
         Ok(())
     }
@@ -185,7 +198,7 @@ impl AdminCommandHandler {
         };
 
         let channels = self
-            .command_utils
+            .utils
             .http_client
             .guild_channels(guild_id)
             .exec()
@@ -231,7 +244,7 @@ impl AdminCommandHandler {
                 .build(),
         );
 
-        Ok(self.command_utils.send_message(command, &message).await?)
+        Ok(self.utils.send_message(command, &message).await?)
     }
 
     pub async fn handle_matchmaking_settings_changed() {}

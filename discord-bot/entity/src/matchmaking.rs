@@ -12,6 +12,7 @@ pub mod active_session {
     #[sea_orm(table_name = "matchmaking_sessions")]
     pub struct Model {
         #[sea_orm(primary_key)]
+        // TODO: Change to UUID
         pub id: i32,
         pub started_at: DateTimeUtc,
         /// Usually set to 60 minutes after the match started, depending on whether the players need more time.

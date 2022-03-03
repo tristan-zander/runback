@@ -31,6 +31,7 @@ use twilight_util::builder::{
 
 use crate::{
     config::Config, interactions::application_commands::matchmaking::MatchmakingCommandHandler,
+    RunbackError,
 };
 
 use self::{admin::AdminCommandHandler, eula::EULACommandHandler};
@@ -62,7 +63,7 @@ impl ApplicationCommandHandlers {
     pub async fn on_command_receive(
         &self,
         command: &Box<DiscordApplicationCommand>,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), RunbackError> {
         // TODO: Assert that the guild has accepted the EULA
         // if has_accepted_eula(command.guild_id) {
         // Send a message to the user, saying that a server administrator needs to accept the eula
@@ -83,7 +84,11 @@ impl ApplicationCommandHandlers {
                             .color(0x55_4e_2b)
                             .description("Runback Matchmaking Bot")
                             .field(EmbedFieldBuilder::new("Ping?", "Pong!").build())
-                            .build()?])
+                            .build()
+                            .map_err(|e| RunbackError {
+                                message: "Failed to build callback data".to_owned(),
+                                inner: Some(e.into()),
+                            })?])
                         .flags(MessageFlags::EPHEMERAL)
                         .build(),
                 );
@@ -205,7 +210,7 @@ impl ApplicationCommandUtilities {
         &self,
         command: &Box<DiscordApplicationCommand>,
         message: &InteractionResponse,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), RunbackError> {
         let _res = self
             .http_client
             .interaction(self.application_id)
