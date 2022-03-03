@@ -4,6 +4,7 @@ use std::{error::Error, sync::Arc};
 
 use entity::sea_orm::DatabaseConnection;
 use lazy_static::__Deref;
+use tracing::Instrument;
 use twilight_gateway::Shard;
 use twilight_model::{
     application::callback::InteractionResponse, channel::message::MessageFlags,
@@ -36,7 +37,7 @@ impl InteractionHandler {
         interaction: Box<InteractionCreate>,
         _shard: &'shard Shard,
     ) -> Result<(), RunbackError> {
-        debug!(interaction = %format!("{:?}", interaction), "Received interaction");
+        event!(tracing::Level::DEBUG, "Received interaction");
 
         // TODO: Send a deferred message response, followup on it later
 
@@ -44,18 +45,24 @@ impl InteractionHandler {
             // I think this is only for webhook interaction handlers
             // twilight_model::application::interaction::Interaction::Ping(_) => ,
             twilight_model::application::interaction::Interaction::ApplicationCommand(command) => {
-                let message = InteractionResponse::DeferredUpdateMessage;
-                self.application_command_handlers
-                    .utilities
-                    .http_client
-                    .interaction(self.application_command_handlers.utilities.application_id)
-                    .interaction_callback(command.id, command.token.as_str(), &message)
-                    .exec()
-                    .await?;
+                // let message = InteractionResponse::DeferredChannelMessageWithSource(
+                //     CallbackDataBuilder::new()
+                //         .flags(MessageFlags::EPHEMERAL)
+                //         .content("Awaiting response...".into())
+                //         .build(),
+                // );
+                // self.application_command_handlers
+                //     .utilities
+                //     .http_client
+                //     .interaction(self.application_command_handlers.utilities.application_id)
+                //     .interaction_callback(command.id, command.token.as_str(), &message)
+                //     .exec()
+                //     .await?;
 
                 let res = self
                     .application_command_handlers
                     .on_command_receive(command)
+                    .instrument(debug_span!("interaction::application_command"))
                     .await?;
             }
             // twilight_model::application::interaction::Interaction::ApplicationCommandAutocomplete(
