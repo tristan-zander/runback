@@ -28,19 +28,18 @@ lazy_static! {
 }
 
 #[derive(Debug)]
-enum MainError {
-    DbErr(DbErr),
-    ClusterStartErr(ClusterStartError),
-    UnknownErr(RunbackError),
-    DynamicErr(Box<dyn Error>),
-}
-
-#[derive(Debug)]
 pub struct RunbackError {
     pub message: String,
+    pub inner: Option<Box<dyn Error + 'static>>,
 }
 
 impl Error for RunbackError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match &self.inner {
+            Some(e) => Some(e.as_ref()),
+            None => None,
+        }
+    }
 }
 
 impl std::fmt::Display for RunbackError {
@@ -49,26 +48,44 @@ impl std::fmt::Display for RunbackError {
     }
 }
 
-impl From<DbErr> for MainError {
+impl From<DbErr> for RunbackError {
     fn from(e: DbErr) -> Self {
-        Self::DbErr(e)
+        RunbackError {
+            message: "Database Error".to_owned(),
+            inner: Some(e.into()),
+        }
     }
 }
 
-impl From<ClusterStartError> for MainError {
+impl From<ClusterStartError> for RunbackError {
     fn from(e: ClusterStartError) -> Self {
-        Self::ClusterStartErr(e)
+        RunbackError {
+            message: "Cluster Start Error".to_owned(),
+            inner: Some(e.into()),
+        }
     }
 }
 
-impl From<Box<dyn Error>> for MainError {
+impl From<twilight_http::Error> for RunbackError {
+    fn from(e: twilight_http::Error) -> Self {
+        RunbackError {
+            message: "Twilight HTTP Error".to_owned(),
+            inner: Some(e.into()),
+        }
+    }
+}
+
+impl From<Box<dyn Error>> for RunbackError {
     fn from(e: Box<dyn Error>) -> Self {
-        Self::DynamicErr(e)
+        RunbackError {
+            message: "Unknown Error".to_owned(),
+            inner: Some(e.into()),
+        }
     }
 }
 
 #[tokio::main]
-async fn main() -> Result<(), MainError> {
+async fn main() -> Result<(), RunbackError> {
     tracing_subscriber::fmt()
         .with_level(true)
         .with_target(true)
@@ -148,7 +165,7 @@ async fn main() -> Result<(), MainError> {
                 let interaction_ref = interactions.clone();
                 tokio::spawn(async move {
                     let shard = cluster_ref.shard(shard_id).unwrap();
-                    interaction_ref.handle_interaction(i, shard).await;
+                    interaction_ref.handle_interaction(i, shard).await?;
                 });
             }
             _ => trace!(kind = %format!("{:?}", event.kind()), "Unhandled event"),

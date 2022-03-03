@@ -11,14 +11,13 @@ use twilight_model::{
         },
     },
     channel::message::MessageFlags,
-    id::{marker::ApplicationMarker, Id},
 };
 use twilight_util::builder::{
     command::{CommandBuilder, StringBuilder},
     CallbackDataBuilder,
 };
 
-use crate::MainError;
+use crate::RunbackError;
 
 use super::{ApplicationCommand, ApplicationCommandUtilities};
 
@@ -65,7 +64,7 @@ impl EULACommandHandler {
     pub async fn on_command_called(
         &self,
         command: &Box<DiscordApplicationCommand>,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), RunbackError> {
         debug!(options = %format!("{:?}", command.data.options));
 
         let gid = if let Some(gid) = command.guild_id {
