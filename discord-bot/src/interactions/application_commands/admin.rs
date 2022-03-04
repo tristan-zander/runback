@@ -74,7 +74,7 @@ impl AdminCommandHandler {
         }
     }
 
-    pub async fn on_command_called(&self, command: &Box<DiscordApplicationCommand>) {
+    pub async fn on_command_called(&self, command: &DiscordApplicationCommand) {
         let options = &command.data.options;
 
         // There should only be one subcommand option, but map through them anyways
@@ -184,7 +184,7 @@ impl AdminCommandHandler {
 
     pub async fn send_matchamking_settings(
         &self,
-        command: &Box<DiscordApplicationCommand>,
+        command: &DiscordApplicationCommand,
     ) -> Result<(), Box<dyn Error>> {
         // VERIFY: Is it possible that we can send the information of other guilds here?
         let guild_id = match command.guild_id {
