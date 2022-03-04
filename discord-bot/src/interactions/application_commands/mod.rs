@@ -62,7 +62,7 @@ impl ApplicationCommandHandlers {
 
     pub async fn on_command_receive(
         &self,
-        command: &Box<DiscordApplicationCommand>,
+        command: &DiscordApplicationCommand,
     ) -> Result<(), RunbackError> {
         // TODO: Assert that the guild has accepted the EULA
         // if has_accepted_eula(command.guild_id) {
@@ -208,7 +208,7 @@ impl ApplicationCommandUtilities {
 
     async fn send_message(
         &self,
-        command: &Box<DiscordApplicationCommand>,
+        command: &DiscordApplicationCommand,
         message: &InteractionResponse,
     ) -> Result<(), RunbackError> {
         let _res = self

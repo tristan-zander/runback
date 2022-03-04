@@ -63,7 +63,7 @@ impl EULACommandHandler {
 
     pub async fn on_command_called(
         &self,
-        command: &Box<DiscordApplicationCommand>,
+        command: &DiscordApplicationCommand,
     ) -> Result<(), RunbackError> {
         debug!(options = %format!("{:?}", command.data.options));
 

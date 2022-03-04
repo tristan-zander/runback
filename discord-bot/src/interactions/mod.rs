@@ -45,23 +45,8 @@ impl InteractionHandler {
             // I think this is only for webhook interaction handlers
             // twilight_model::application::interaction::Interaction::Ping(_) => ,
             twilight_model::application::interaction::Interaction::ApplicationCommand(command) => {
-                // let message = InteractionResponse::DeferredChannelMessageWithSource(
-                //     CallbackDataBuilder::new()
-                //         .flags(MessageFlags::EPHEMERAL)
-                //         .content("Awaiting response...".into())
-                //         .build(),
-                // );
-                // self.application_command_handlers
-                //     .utilities
-                //     .http_client
-                //     .interaction(self.application_command_handlers.utilities.application_id)
-                //     .interaction_callback(command.id, command.token.as_str(), &message)
-                //     .exec()
-                //     .await?;
-
-                let res = self
-                    .application_command_handlers
-                    .on_command_receive(command)
+                self.application_command_handlers
+                    .on_command_receive(command.deref())
                     .instrument(debug_span!("interaction::application_command"))
                     .await?;
             }
@@ -69,23 +54,9 @@ impl InteractionHandler {
             //     _,
             // ) => todo!(),
             twilight_model::application::interaction::Interaction::MessageComponent(m) => {
-                // let message = InteractionResponse::DeferredUpdateMessage;
-                // let res = self
-                //     .application_command_handlers
-                //     .utilities
-                //     .http_client
-                //     .interaction(self.application_command_handlers.utilities.application_id)
-                //     .interaction_callback(m.id, m.token.as_str(), &message)
-                //     .exec()
-                //     .await;
-                // if let Err(e) = res {
-                //     error!(error = %e, "Could not send DeferUpdateMessage as MessageComponent response");
-                // }
-
-                let res = self
-                    .application_command_handlers
+                self.application_command_handlers
                     .on_message_component_event(m.deref())
-                    .await;
+                    .await?;
             }
             _ => {
                 debug!(interaction = %format!("{:?}", interaction), "Unhandled interaction");
