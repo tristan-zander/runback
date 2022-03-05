@@ -1,0 +1,11 @@
+[default]
+# token = ""
+log_level = "WARN"
+debug_guild_id = ""
+
+[default.db]
+protocol = "postgres"
+username = "runback"
+# password = ""
+host = "db"
+db_name = "discord-client"
