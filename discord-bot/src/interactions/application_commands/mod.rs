@@ -29,10 +29,7 @@ use twilight_util::builder::{
     CallbackDataBuilder,
 };
 
-use crate::{
-    config::Config, interactions::application_commands::matchmaking::MatchmakingCommandHandler,
-    RunbackError,
-};
+use crate::{error::RunbackError, config::Config, interactions::application_commands::matchmaking::MatchmakingCommandHandler};
 
 use self::{admin::AdminCommandHandler, eula::EULACommandHandler};
 
@@ -51,7 +48,7 @@ pub struct ApplicationCommandHandlers {
 }
 
 impl ApplicationCommandHandlers {
-    pub async fn new(db: Arc<Box<DatabaseConnection>>) -> Result<Self, Box<dyn Error>> {
+    pub async fn new(db: Arc<Box<DatabaseConnection>>) -> Result<Self, RunbackError> {
         let utilities = Arc::new(ApplicationCommandUtilities::new(db).await?);
         Ok(Self {
             utilities: utilities.clone(),
@@ -131,7 +128,7 @@ impl ApplicationCommandHandlers {
     pub async fn on_message_component_event(
         &self,
         message: &MessageComponentInteraction,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), RunbackError> {
         debug!(message = %format!("{:?}", message), "TODO: handle message component interaction");
 
         let custom_id = &message.data.custom_id;
@@ -156,7 +153,7 @@ impl ApplicationCommandHandlers {
 }
 
 impl ApplicationCommandUtilities {
-    pub async fn new(db: Arc<Box<DatabaseConnection>>) -> Result<Self, Box<dyn Error>> {
+    pub async fn new(db: Arc<Box<DatabaseConnection>>) -> Result<Self, RunbackError> {
         let http_client = DiscordHttpClient::new(crate::CONFIG.token.clone());
         let application_id = {
             let response = http_client.current_user_application().exec().await?;
@@ -181,7 +178,7 @@ impl ApplicationCommandUtilities {
         (*self.db).as_ref()
     }
 
-    pub async fn register_all_application_commands(&self) -> Result<(), Box<dyn Error>> {
+    pub async fn register_all_application_commands(&self) -> Result<(), RunbackError> {
         let debug_guild = crate::CONFIG.debug_guild_id.clone();
 
         let commands = vec![

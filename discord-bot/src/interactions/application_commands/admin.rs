@@ -95,7 +95,7 @@ impl AdminCommandHandler {
         &self,
         id_parts: Vec<&str>,
         component: &MessageComponentInteraction,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), RunbackError> {
         let sub_group = *id_parts.get(1).unwrap();
         let action_id = *id_parts.get(2).unwrap();
 
@@ -122,18 +122,18 @@ impl AdminCommandHandler {
     async fn set_matchmaking_channel(
         &self,
         component: &MessageComponentInteraction,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), RunbackError> {
         let channel_id: Id<ChannelMarker> = Id::new(
             component
                 .data
                 .values
                 .get(0)
-                .ok_or(format!(
-                    "Could not validate channel_id {} string as valid ID",
-                    component.data.values[0]
-                ))?
-                .as_str()
-                .parse::<u64>()?,
+                .ok_or("No component values provided.")?
+                .parse::<u64>()
+                .map_err(|e| -> RunbackError {RunbackError {
+                    message: "Unable to parse channel_id. Data is invalid".to_owned(),
+                    inner: Some(e.into()),
+                }})?,
         );
 
         let guild_id = component
