@@ -117,7 +117,7 @@ impl ApplicationCommandHandlers {
             }
             "admin" => {
                 // Admin related settings
-                self.admin_command_handler.on_command_called(command).await;
+                self.admin_command_handler.on_command_called(command).await?;
             }
             _ => warn!(command_name = %command_name, "Unhandled application command"),
         }

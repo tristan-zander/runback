@@ -7,7 +7,6 @@ use config::Config;
 use entity::sea_orm::{ConnectOptions, Database};
 use error::RunbackError;
 use futures::stream::StreamExt;
-use tracing::Instrument;
 use std::{sync::Arc};
 use twilight_cache_inmemory::{InMemoryCache, ResourceType};
 use twilight_gateway::{
@@ -117,6 +116,7 @@ async fn main() -> Result<(), RunbackError> {
                         .await;
                     if let Err(e) = res {
                         error!(error = %e, "Error occurred while handling interactions.");
+                        debug!(debug_error = %format!("{:?}", e), "Error occurred while handling interactions.");
                     }
                 });
             }

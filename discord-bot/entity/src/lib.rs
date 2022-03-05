@@ -6,6 +6,7 @@ use std::{marker::PhantomData, num::NonZeroU64};
 pub use sea_orm;
 use sea_orm::{
     sea_query::{Nullable, ValueType, ValueTypeErr},
+    strum::Display,
     DbErr, TryGetable,
 };
 use twilight_model::id::Id;
@@ -18,6 +19,12 @@ pub struct IdWrapper<T> {
     /// This field is translated into i64 through a memory transmute
     pub inner: NonZeroU64,
     data: PhantomData<T>,
+}
+
+impl<T> std::fmt::Display for IdWrapper<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.inner)
+    }
 }
 
 impl<T> PartialEq for IdWrapper<T> {

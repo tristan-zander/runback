@@ -1,4 +1,4 @@
-use std::{error::Error, num::ParseIntError};
+use std::{error::Error};
 
 use migration::DbErr;
 use tracing::instrument::Instrumented;
@@ -47,7 +47,7 @@ impl From<ClusterStartError> for RunbackError {
 impl From<twilight_http::Error> for RunbackError {
     fn from(e: twilight_http::Error) -> Self {
         RunbackError {
-            message: "Twilight HTTP Error".to_owned(),
+            message: format!("Twilight HTTP Error: {}", e),
             inner: Some(e.into()),
         }
     }
