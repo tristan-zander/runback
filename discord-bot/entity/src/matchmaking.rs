@@ -81,15 +81,25 @@ pub mod settings {
 
 /// The matchmaking panel that users can interact with
 pub mod panel {
+    use twilight_model::{id::marker::{ChannelMarker, MessageMarker}, channel::GuildChannel};
+
+    use crate::IdWrapper;
+
     use super::*;
 
     #[derive(Clone, Debug, PartialEq, DeriveEntityModel, DeriveActiveModelBehavior)]
     #[sea_orm(table_name = "matchmaking_panels")]
     pub struct Model {
         #[sea_orm(primary_key, auto_increment = false)]
-        pub guild_id: i64,
-        pub message_id: i64,
-        pub game: String,
+        pub panel_id: Uuid,
+        pub guild_id: IdWrapper<GuildChannel>,
+        #[sea_orm(unique)]
+        pub message_id: IdWrapper<MessageMarker>,
+        #[sea_orm(unique)]
+        pub channel_id: IdWrapper<ChannelMarker>,
+        #[sea_orm(nullable)]
+        /// 80 Character Game Title
+        pub game: Option<String>,
     }
 
     impl Model {
