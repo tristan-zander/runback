@@ -51,21 +51,29 @@ impl MigrationTrait for Migration {
                     .table(matchmaking::Panel)
                     .if_not_exists()
                     .col(
-                        ColumnDef::new(matchmaking::panel::Column::GuildId)
-                            .big_integer()
+                        ColumnDef::new(matchmaking::panel::Column::PanelId)
+                            .uuid()
                             .primary_key()
                             .not_null(),
                     )
                     .col(
-                        ColumnDef::new(matchmaking::panel::Column::MessageId)
+                        ColumnDef::new(matchmaking::panel::Column::GuildId)
                             .big_integer()
                             .not_null(),
                     )
                     .col(
-                        ColumnDef::new(matchmaking::panel::Column::Game)
-                            .string_len(80)
+                        ColumnDef::new(matchmaking::panel::Column::ChannelId)
+                            .big_integer()
+                            .not_null()
+                            .unique_key(),
+                    )
+                    .col(
+                        ColumnDef::new(matchmaking::panel::Column::MessageId)
+                            .big_integer()
+                            .unique_key()
                             .not_null(),
                     )
+                    .col(ColumnDef::new(matchmaking::panel::Column::Game).string_len(80))
                     .to_owned(),
             )
             .await?;
