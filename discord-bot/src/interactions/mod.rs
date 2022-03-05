@@ -12,7 +12,7 @@ use twilight_model::{
 };
 use twilight_util::builder::CallbackDataBuilder;
 
-use crate::{config::Config, RunbackError};
+use crate::{config::Config, error::RunbackError};
 
 use self::application_commands::{ApplicationCommandHandlers, ApplicationCommandUtilities};
 
@@ -21,7 +21,7 @@ pub struct InteractionHandler {
 }
 
 impl InteractionHandler {
-    pub async fn init(db: Arc<Box<DatabaseConnection>>) -> Result<Self, Box<dyn Error>> {
+    pub async fn init(db: Arc<Box<DatabaseConnection>>) -> Result<Self, RunbackError> {
         let application_command_handlers = ApplicationCommandHandlers::new(db).await?;
         application_command_handlers
             .utilities
@@ -32,6 +32,7 @@ impl InteractionHandler {
         })
     }
 
+    #[tracing::instrument(skip_all)]
     pub async fn handle_interaction<'shard>(
         &self,
         interaction: Box<InteractionCreate>,
@@ -47,15 +48,14 @@ impl InteractionHandler {
             twilight_model::application::interaction::Interaction::ApplicationCommand(command) => {
                 self.application_command_handlers
                     .on_command_receive(command.deref())
-                    .instrument(debug_span!("interaction::application_command"))
                     .await?;
             }
             // twilight_model::application::interaction::Interaction::ApplicationCommandAutocomplete(
             //     _,
             // ) => todo!(),
-            twilight_model::application::interaction::Interaction::MessageComponent(m) => {
+            twilight_model::application::interaction::Interaction::MessageComponent(message) => {
                 self.application_command_handlers
-                    .on_message_component_event(m.deref())
+                    .on_message_component_event(message.deref())
                     .await?;
             }
             _ => {
