@@ -4,8 +4,6 @@ use figment::{
     Figment, Profile,
 };
 use serde::{Deserialize, Serialize};
-use std::error::Error;
-use tracing_subscriber::registry::Data;
 use twilight_model::id::{marker::GuildMarker, Id};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
