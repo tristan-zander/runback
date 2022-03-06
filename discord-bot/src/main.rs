@@ -4,15 +4,12 @@ extern crate tracing;
 extern crate lazy_static;
 
 use config::Config;
-use entity::sea_orm::{ConnectOptions, Database};
+use entity::sea_orm::{ConnectOptions, Database, DatabaseConnection};
 use error::RunbackError;
 use futures::stream::StreamExt;
-use std::{sync::Arc};
+use std::sync::Arc;
 use twilight_cache_inmemory::{InMemoryCache, ResourceType};
-use twilight_gateway::{
-    cluster::{ShardScheme},
-    Cluster, Intents,
-};
+use twilight_gateway::{cluster::ShardScheme, Cluster, Intents};
 
 use twilight_model::gateway::event::Event;
 
@@ -20,15 +17,13 @@ use crate::interactions::InteractionHandler;
 
 mod client;
 mod config;
-mod interactions;
 mod error;
+mod interactions;
 
 // DO NOT STORE THE CONFIG FOR LONG PERIODS OF TIME! IT CAN BE CHANGED ON A WHIM (in the future)
 lazy_static! {
     static ref CONFIG: Arc<Box<Config>> = Arc::new(Box::new(Config::new().unwrap()));
 }
-
-
 
 #[tokio::main]
 async fn main() -> Result<(), RunbackError> {
@@ -39,25 +34,8 @@ async fn main() -> Result<(), RunbackError> {
         //.json()
         .init();
 
-    let db = &CONFIG.db;
-    let pass = if db.password.is_some() {
-        format!(":{}", db.password.as_ref().unwrap())
-    } else {
-        "".to_string()
-    };
-
-    let connection_string = format!(
-        "{}://{}{}@{}/{}{}",
-        db.protocol, db.username, pass, db.host, db.db_name, db.extra_options
-    );
-
-    let opt = ConnectOptions::new(connection_string);
-
-    // Arc<Box> is easier than setting up a static lifetime reference for the DatabaseConnection
-    let db = Arc::new(Box::new(Database::connect(opt).await?));
+    let db = connect_to_database().await?;
     info!("Successfully connected to database.");
-
-    // tracing_log::LogTracer::init()?;
 
     let interactions = Arc::new(InteractionHandler::init(db.clone()).await?); // Register guild commands
     info!("Registered guild commands");
@@ -111,9 +89,7 @@ async fn main() -> Result<(), RunbackError> {
                 let interaction_ref = interactions.clone();
                 tokio::spawn(async move {
                     let shard = cluster_ref.shard(shard_id).unwrap();
-                    let res = interaction_ref
-                        .handle_interaction(i, shard)
-                        .await;
+                    let res = interaction_ref.handle_interaction(i, shard).await;
                     if let Err(e) = res {
                         error!(error = %e, "Error occurred while handling interactions.");
                         debug!(debug_error = %format!("{:?}", e), "Error occurred while handling interactions.");
@@ -125,4 +101,27 @@ async fn main() -> Result<(), RunbackError> {
     }
 
     return Ok(());
+}
+
+#[tracing::instrument]
+async fn connect_to_database() -> Result<Arc<Box<DatabaseConnection>>, RunbackError> {
+    let db = &CONFIG.db;
+    let pass = if db.password.is_some() {
+        format!(":{}", db.password.as_ref().unwrap())
+    } else {
+        "".to_string()
+    };
+
+    let connection_string = format!(
+        "{}://{}{}@{}/{}{}",
+        db.protocol, db.username, pass, db.host, db.db_name, db.extra_options
+    );
+
+    let opt = ConnectOptions::new(connection_string);
+
+    // Arc<Box> is easier than setting up a static lifetime reference for the DatabaseConnection
+    let db = Arc::new(Box::new(Database::connect(opt).await?));
+    
+
+    Ok(db)
 }
