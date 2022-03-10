@@ -9,7 +9,10 @@ use error::RunbackError;
 use futures::stream::StreamExt;
 use std::sync::Arc;
 use twilight_cache_inmemory::{InMemoryCache, ResourceType};
-use twilight_gateway::{cluster::ShardScheme, Cluster, Intents};
+use twilight_gateway::{
+    cluster::ShardScheme,
+    Cluster, Intents,
+};
 
 use twilight_model::gateway::event::Event;
 
@@ -96,7 +99,7 @@ async fn main() -> Result<(), RunbackError> {
                     }
                 });
             }
-            _ => trace!(kind = %format!("{:?}", event.kind()), "Unhandled event"),
+            _ => debug!(kind = %format!("{:?}", event.kind()), "Unhandled event"),
         }
     }
 
@@ -121,7 +124,6 @@ async fn connect_to_database() -> Result<Arc<Box<DatabaseConnection>>, RunbackEr
 
     // Arc<Box> is easier than setting up a static lifetime reference for the DatabaseConnection
     let db = Arc::new(Box::new(Database::connect(opt).await?));
-    
 
     Ok(db)
 }

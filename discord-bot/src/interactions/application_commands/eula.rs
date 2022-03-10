@@ -1,4 +1,4 @@
-use std::{error::Error, sync::Arc};
+use std::sync::Arc;
 
 use chrono::Utc;
 use entity::sea_orm::{ActiveModelTrait, EntityTrait, IntoActiveModel, Set};
@@ -158,22 +158,6 @@ impl EULACommandHandler {
         );
 
         self.command_utils.send_message(command, &message).await?;
-
-        Ok(())
-    }
-
-    async fn send_message(
-        &self,
-        command: &Box<DiscordApplicationCommand>,
-        message: &InteractionResponse,
-    ) -> Result<(), Box<dyn Error>> {
-        let _res = self
-            .command_utils
-            .http_client
-            .interaction(self.command_utils.application_id)
-            .interaction_callback(command.id, command.token.as_str(), message)
-            .exec()
-            .await?;
 
         Ok(())
     }

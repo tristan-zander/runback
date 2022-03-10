@@ -1,5 +1,6 @@
 use std::{error::Error, time::Duration};
 
+use common::config::Events;
 use rdkafka::{
     message::OwnedHeaders,
     producer::{FutureProducer, FutureRecord},
@@ -12,7 +13,7 @@ pub struct EventLoop {
 }
 
 impl EventLoop {
-    pub fn new(event_settings: crate::config::Events) -> Result<EventLoop, Box<dyn Error>> {
+    pub fn new(event_settings: Events) -> Result<EventLoop, Box<dyn Error>> {
         let mut kafka_config = ClientConfig::new();
 
         for (key, val) in event_settings.kafka_settings {

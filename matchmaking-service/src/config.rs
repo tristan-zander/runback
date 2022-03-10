@@ -1,6 +1,6 @@
-use std::{collections::HashMap, error::Error, path::Path, str::FromStr};
+use std::{collections::HashMap, error::Error, str::FromStr};
 
-use common::logging::{LogDriver, LogLevel};
+use common::{logging::{LogDriver, LogLevel}, config::{Logging, Storage, Events, Auth}};
 use figment::{
     providers::{Env, Format, Serialized, Toml},
     Figment, Profile,
@@ -14,33 +14,6 @@ pub struct Config {
     pub storage: Storage,
     pub events: Events,
     pub auth: Auth,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct Storage {
-    pub database_url: Url,
-    pub redis_url: Option<Url>,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct Events {
-    pub kafka_settings: HashMap<String, String>,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct Auth {
-    pub keycloak_realm: Url,
-    pub client_id: String,
-    pub client_secret: Option<String>,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct Logging {
-    log_level: LogLevel,
-    log_driver: LogDriver,
-    log_to_file: Option<Box<Path>>,
-    /// Specifically, add extra information about stats like thread ID, file name, etc. Only useful for debugging
-    too_much_information: bool,
 }
 
 impl Default for Config {

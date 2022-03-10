@@ -651,6 +651,7 @@ dependencies = [
  "futures",
  "lazy_static",
  "migration",
+ "rdkafka",
  "serde",
  "serde_json",
  "tokio",
