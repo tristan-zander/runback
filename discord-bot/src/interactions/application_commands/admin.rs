@@ -2,23 +2,19 @@ use std::{error::Error, sync::Arc};
 
 use chrono::Utc;
 use entity::{
-    matchmaking::panel,
     sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter},
     IdWrapper,
 };
-use serde::Serialize;
-use tracing::Instrument;
 use twilight_embed_builder::EmbedBuilder;
 use twilight_model::{
     application::{
-        callback::{CallbackData, InteractionResponse},
+        callback::InteractionResponse,
         command::{Command, CommandType},
         component::{
             button::ButtonStyle, select_menu::SelectMenuOption, ActionRow, Button, Component,
             SelectMenu,
         },
         interaction::{
-            application_command::{CommandDataOption, CommandOptionValue},
             ApplicationCommand as DiscordApplicationCommand, MessageComponentInteraction,
         },
     },
@@ -29,7 +25,7 @@ use twilight_model::{
     },
 };
 use twilight_util::builder::{
-    command::{CommandBuilder, SubCommandBuilder, SubCommandGroupBuilder},
+    command::{CommandBuilder, SubCommandBuilder},
     CallbackDataBuilder,
 };
 
@@ -166,7 +162,7 @@ impl AdminCommandHandler {
             .one(self.utils.db_ref())
             .await?;
 
-        let setting = if setting.is_some() {
+        let _setting = if setting.is_some() {
             let mut setting = unsafe { setting.unwrap_unchecked() }.into_active_model();
             setting.channel_id = entity::sea_orm::Set(Some(channel_id.into()));
             setting.update(self.utils.db_ref()).await?
@@ -379,5 +375,5 @@ impl AdminCommandHandler {
         Ok(self.utils.send_message(command, &message).await?)
     }
 
-    pub async fn handle_matchmaking_settings_changed() {}
+    // pub async fn handle_matchmaking_settings_changed() {}
 }

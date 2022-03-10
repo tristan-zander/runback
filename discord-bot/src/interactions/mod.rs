@@ -1,20 +1,17 @@
 pub mod application_commands;
 
-use std::{error::Error, sync::Arc};
+use std::sync::Arc;
 
 use entity::sea_orm::DatabaseConnection;
-use lazy_static::__Deref;
-use tracing::Instrument;
+
 use twilight_gateway::Shard;
 use twilight_model::{
-    application::callback::InteractionResponse, channel::message::MessageFlags,
     gateway::payload::incoming::InteractionCreate,
 };
-use twilight_util::builder::CallbackDataBuilder;
 
-use crate::{config::Config, error::RunbackError};
+use crate::error::RunbackError;
 
-use self::application_commands::{ApplicationCommandHandlers, ApplicationCommandUtilities};
+use self::application_commands::ApplicationCommandHandlers;
 
 pub struct InteractionHandler {
     application_command_handlers: ApplicationCommandHandlers,
@@ -24,7 +21,7 @@ impl InteractionHandler {
     pub async fn init(db: Arc<Box<DatabaseConnection>>) -> Result<Self, RunbackError> {
         let application_command_handlers = ApplicationCommandHandlers::new(db).await?;
         application_command_handlers
-            .utilities
+            .utils
             .register_all_application_commands()
             .await?;
         Ok(Self {
@@ -47,7 +44,7 @@ impl InteractionHandler {
             // twilight_model::application::interaction::Interaction::Ping(_) => ,
             twilight_model::application::interaction::Interaction::ApplicationCommand(command) => {
                 self.application_command_handlers
-                    .on_command_receive(command.deref())
+                    .on_command_receive(command.as_ref())
                     .await?;
             }
             // twilight_model::application::interaction::Interaction::ApplicationCommandAutocomplete(
@@ -55,7 +52,7 @@ impl InteractionHandler {
             // ) => todo!(),
             twilight_model::application::interaction::Interaction::MessageComponent(message) => {
                 self.application_command_handlers
-                    .on_message_component_event(message.deref())
+                    .on_message_component_event(message.as_ref())
                     .await?;
             }
             _ => {

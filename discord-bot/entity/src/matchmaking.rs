@@ -1,5 +1,4 @@
 use sea_orm::entity::prelude::*;
-use serde::{Deserialize, Serialize};
 
 pub use active_session::Entity as ActiveSession;
 pub use panel::Entity as Panel;
@@ -60,19 +59,6 @@ pub mod settings {
         pub channel_id: Option<IdWrapper<ChannelMarker>>,
         #[sea_orm(default_value = false)]
         pub threads_are_private: bool,
-    }
-
-    impl Model {
-        // pub fn cast_channel_id(&self) -> Option<Id<ChannelMarker>> {
-        //     if let Some(cid) = self.channel_id {
-        //         return Some(Id::new(cid));
-        //     }
-        //     None
-        // }
-
-        // pub fn cast_guild_id(&self) -> Id<GuildMarker> {
-        //     Id::new(self.guild_id)
-        // }
     }
 
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

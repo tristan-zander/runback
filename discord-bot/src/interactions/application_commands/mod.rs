@@ -2,7 +2,7 @@ mod admin;
 mod eula;
 mod matchmaking;
 
-use std::{error::Error, sync::Arc};
+use std::sync::Arc;
 
 use entity::sea_orm::DatabaseConnection;
 use twilight_embed_builder::{EmbedBuilder, EmbedFieldBuilder};
@@ -22,14 +22,13 @@ use twilight_model::{
     },
 };
 use twilight_util::builder::{
-    command::{
-        ChannelBuilder, CommandBuilder, RoleBuilder, StringBuilder, SubCommandBuilder,
-        SubCommandGroupBuilder,
-    },
+    command::{CommandBuilder, StringBuilder},
     CallbackDataBuilder,
 };
 
-use crate::{error::RunbackError, config::Config, interactions::application_commands::matchmaking::MatchmakingCommandHandler};
+use crate::{
+    error::RunbackError, interactions::application_commands::matchmaking::MatchmakingCommandHandler,
+};
 
 use self::{admin::AdminCommandHandler, eula::EULACommandHandler};
 
@@ -42,7 +41,7 @@ pub struct ApplicationCommandUtilities {
 }
 
 pub struct ApplicationCommandHandlers {
-    pub utilities: Arc<ApplicationCommandUtilities>,
+    pub utils: Arc<ApplicationCommandUtilities>,
     eula_command_handler: EULACommandHandler,
     admin_command_handler: AdminCommandHandler,
 }
@@ -51,7 +50,7 @@ impl ApplicationCommandHandlers {
     pub async fn new(db: Arc<Box<DatabaseConnection>>) -> Result<Self, RunbackError> {
         let utilities = Arc::new(ApplicationCommandUtilities::new(db).await?);
         Ok(Self {
-            utilities: utilities.clone(),
+            utils: utilities.clone(),
             eula_command_handler: EULACommandHandler::new(utilities.clone()),
             admin_command_handler: AdminCommandHandler::new(utilities.clone()),
         })
@@ -91,9 +90,9 @@ impl ApplicationCommandHandlers {
                 );
 
                 let _res = self
-                    .utilities
+                    .utils
                     .http_client
-                    .interaction(self.utilities.application_id)
+                    .interaction(self.utils.application_id)
                     .interaction_callback(command.id, command.token.as_str(), &message)
                     .exec()
                     .await?;
@@ -117,7 +116,9 @@ impl ApplicationCommandHandlers {
             }
             "admin" => {
                 // Admin related settings
-                self.admin_command_handler.on_command_called(command).await?;
+                self.admin_command_handler
+                    .on_command_called(command)
+                    .await?;
             }
             _ => warn!(command_name = %command_name, "Unhandled application command"),
         }
@@ -132,12 +133,12 @@ impl ApplicationCommandHandlers {
         debug!(message = %format!("{:?}", message), "TODO: handle message component interaction");
 
         let custom_id = &message.data.custom_id;
-        let component_type = message.data.component_type;
+        let _component_type = message.data.component_type;
 
         let id_parts = custom_id.split(':').collect::<Vec<_>>();
         let namespace: &str = id_parts[0];
 
-        let res = match namespace {
+        let _res = match namespace {
             "admin" => {
                 self.admin_command_handler
                     .on_message_component_event(id_parts, message)

@@ -6,7 +6,6 @@ use std::{marker::PhantomData, num::NonZeroU64};
 pub use sea_orm;
 use sea_orm::{
     sea_query::{Nullable, ValueType, ValueTypeErr},
-    strum::Display,
     DbErr, TryGetable,
 };
 use twilight_model::id::Id;
