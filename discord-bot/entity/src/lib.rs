@@ -3,7 +3,6 @@ extern crate tracing;
 
 use std::{marker::PhantomData, num::NonZeroU64};
 
-pub use sea_orm;
 use sea_orm::{
     sea_query::{Nullable, ValueType, ValueTypeErr},
     DbErr, TryGetable,
@@ -12,6 +11,8 @@ use twilight_model::id::Id;
 
 pub mod discord_user;
 pub mod matchmaking;
+
+pub use sea_orm;
 
 #[derive(Debug, Clone)]
 pub struct IdWrapper<T> {
