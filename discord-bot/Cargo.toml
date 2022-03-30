@@ -22,11 +22,12 @@ tracing-subscriber = { version = "*", features = ["json"] }
 calloop = { version = "0.9.3", features = ["executor"] }
 rdkafka = { version = "0.25", features = ["cmake-build"] }
 # Twilight.rs
-twilight-cache-inmemory = "0.9.0"
-twilight-gateway = "0.9.0"
-twilight-http = "0.9.0"
-twilight-model = "0.9.0"
-twilight-standby = "0.9.0"
-twilight-embed-builder = "0.9.0"
-twilight-mention = "0.9.0"
-twilight-util = { version = "0.9.0", features = ["full"] }
+twilight-cache-inmemory = "0.10.1"
+twilight-gateway = "0.10.1"
+twilight-http = "0.10.1"
+twilight-model = "0.10.1"
+twilight-standby = "0.10.0"
+twilight-embed-builder = "0.10.1"
+twilight-mention = "0.10.0"
+twilight-validate = "0.10.1"
+twilight-util = { version = "0.10.1", features = ["full"] }

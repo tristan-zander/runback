@@ -9,10 +9,7 @@ use error::RunbackError;
 use futures::stream::StreamExt;
 use std::sync::Arc;
 use twilight_cache_inmemory::{InMemoryCache, ResourceType};
-use twilight_gateway::{
-    cluster::ShardScheme,
-    Cluster, Intents,
-};
+use twilight_gateway::{cluster::ShardScheme, Cluster, Intents};
 
 use twilight_model::gateway::event::Event;
 

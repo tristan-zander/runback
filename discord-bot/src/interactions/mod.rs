@@ -5,9 +5,7 @@ use std::sync::Arc;
 use entity::sea_orm::DatabaseConnection;
 
 use twilight_gateway::Shard;
-use twilight_model::{
-    gateway::payload::incoming::InteractionCreate,
-};
+use twilight_model::gateway::payload::incoming::InteractionCreate;
 
 use crate::error::RunbackError;
 
@@ -32,14 +30,14 @@ impl InteractionHandler {
     #[tracing::instrument(skip_all)]
     pub async fn handle_interaction<'shard>(
         &self,
-        interaction: Box<InteractionCreate>,
+        interaction: InteractionCreate,
         _shard: &'shard Shard,
     ) -> Result<(), RunbackError> {
         event!(tracing::Level::DEBUG, "Received interaction");
 
         // TODO: Send a deferred message response, followup on it later
 
-        match &**interaction {
+        match &*interaction {
             // I think this is only for webhook interaction handlers
             // twilight_model::application::interaction::Interaction::Ping(_) => ,
             twilight_model::application::interaction::Interaction::ApplicationCommand(command) => {

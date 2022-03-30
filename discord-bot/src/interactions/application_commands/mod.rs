@@ -5,26 +5,24 @@ mod matchmaking;
 use std::sync::Arc;
 
 use entity::sea_orm::DatabaseConnection;
-use twilight_embed_builder::{EmbedBuilder, EmbedFieldBuilder};
 use twilight_http::Client as DiscordHttpClient;
 use twilight_model::{
     application::{
-        callback::InteractionResponse,
         command::{Command, CommandType},
         interaction::{
             ApplicationCommand as DiscordApplicationCommand, MessageComponentInteraction,
         },
     },
     channel::message::MessageFlags,
+    http::interaction::{InteractionResponse, InteractionResponseType},
     id::{
         marker::{ApplicationMarker, GuildMarker},
         Id,
     },
 };
-use twilight_util::builder::{
-    command::{CommandBuilder, StringBuilder},
-    CallbackDataBuilder,
-};
+use twilight_util::builder::command::{CommandBuilder, StringBuilder};
+use twilight_util::builder::embed::{EmbedBuilder, EmbedFieldBuilder};
+use twilight_util::builder::InteractionResponseDataBuilder;
 
 use crate::{
     error::RunbackError, interactions::application_commands::matchmaking::MatchmakingCommandHandler,
@@ -74,26 +72,30 @@ impl ApplicationCommandHandlers {
             "ping" => {
                 // Respond with `Pong` with an ephemeral message and the current ping in ms
 
-                let message = InteractionResponse::ChannelMessageWithSource(
-                    CallbackDataBuilder::new()
-                        .embeds(vec![EmbedBuilder::new()
-                            .color(0x55_4e_2b)
-                            .description("Runback Matchmaking Bot")
-                            .field(EmbedFieldBuilder::new("Ping?", "Pong!").build())
-                            .build()
-                            .map_err(|e| RunbackError {
-                                message: "Failed to build callback data".to_owned(),
-                                inner: Some(e.into()),
-                            })?])
-                        .flags(MessageFlags::EPHEMERAL)
-                        .build(),
-                );
+                let message = InteractionResponse {
+                    data: Some(
+                        InteractionResponseDataBuilder::new()
+                            .embeds(vec![
+                                EmbedBuilder::new()
+                                    .color(0x55_4e_2b)
+                                    .description("Runback Matchmaking Bot")
+                                    .field(EmbedFieldBuilder::new("Ping?", "Pong!").build())
+                                    .build(), // .map_err(|e| RunbackError {
+                                              //     message: "Failed to build callback data".to_owned(),
+                                              //     inner: Some(e.into()),
+                                              // })?
+                            ])
+                            .flags(MessageFlags::EPHEMERAL)
+                            .build(),
+                    ),
+                    kind: InteractionResponseType::ChannelMessageWithSource,
+                };
 
                 let _res = self
                     .utils
                     .http_client
                     .interaction(self.utils.application_id)
-                    .interaction_callback(command.id, command.token.as_str(), &message)
+                    .create_response(command.id, command.token.as_str(), &message)
                     .exec()
                     .await?;
 
@@ -212,7 +214,7 @@ impl ApplicationCommandUtilities {
         let _res = self
             .http_client
             .interaction(self.application_id)
-            .interaction_callback(command.id, command.token.as_str(), message)
+            .create_response(command.id, command.token.as_str(), message)
             .exec()
             .await?;
 
