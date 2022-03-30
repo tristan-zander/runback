@@ -22,7 +22,7 @@ pub struct DatabaseSettings {
     pub host: String,
     pub db_name: String,
     // Extra arguments that are added to the connection string.
-    pub extra_options: String
+    pub extra_options: String,
 }
 
 impl Default for DatabaseSettings {

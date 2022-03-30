@@ -5,10 +5,8 @@ use entity::{
     sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter},
     IdWrapper,
 };
-use twilight_embed_builder::EmbedBuilder;
 use twilight_model::{
     application::{
-        callback::InteractionResponse,
         command::{Command, CommandType},
         component::{
             button::ButtonStyle, select_menu::SelectMenuOption, ActionRow, Button, Component,
@@ -18,7 +16,8 @@ use twilight_model::{
             ApplicationCommand as DiscordApplicationCommand, MessageComponentInteraction,
         },
     },
-    channel::{message::MessageFlags, GuildChannel, TextChannel},
+    channel::{message::MessageFlags, Channel, ChannelType},
+    http::interaction::{InteractionResponse, InteractionResponseType},
     id::{
         marker::{ChannelMarker, GuildMarker},
         Id,
@@ -26,12 +25,15 @@ use twilight_model::{
 };
 use twilight_util::builder::{
     command::{CommandBuilder, SubCommandBuilder},
-    CallbackDataBuilder,
+    embed::EmbedBuilder,
+    InteractionResponseDataBuilder as CallbackDataBuilder,
 };
 
 use crate::RunbackError;
 
 use super::{ApplicationCommand, ApplicationCommandUtilities};
+
+mod panel_model;
 
 #[derive(Debug)]
 struct AdminCommandHandlerError {
@@ -96,7 +98,7 @@ impl AdminCommandHandler {
                     self.send_matchamking_settings(command).await?;
                 }
                 "mm-panels" => {
-                    self.on_mm_panels(command).await?;
+                    self.on_mm_panels_command_received(command).await?;
                 }
                 _ => {
                     debug!(name = %option.name.as_str(), "Unknown admin subcommand option")
@@ -112,8 +114,12 @@ impl AdminCommandHandler {
         id_parts: Vec<&str>,
         component: &MessageComponentInteraction,
     ) -> Result<(), RunbackError> {
-        let sub_group = *id_parts.get(1).unwrap();
-        let action_id = *id_parts.get(2).unwrap();
+        let sub_group = *id_parts
+            .get(1)
+            .ok_or("Could not get message component sub_group")?;
+        let action_id = *id_parts
+            .get(2)
+            .ok_or("Could not get message component action_id")?;
 
         match sub_group {
             "mm" => {
@@ -122,8 +128,16 @@ impl AdminCommandHandler {
                     "channel" => {
                         self.set_matchmaking_channel(component).await?;
                     }
+                    "panels" => {
+                        let component_id = *id_parts
+                            .get(3)
+                            .ok_or("Could not get message component action_id")?;
+                        let args = &id_parts[3..];
+                        self.on_mm_panel_component_changed(component, component_id, args)
+                            .await?;
+                    }
                     _ => {
-                        warn!(action = %action_id, group = %sub_group, "Unknown admin custom action received")
+                        warn!(action = %action_id, group = %sub_group, parts = %format!("{:?}", id_parts), "Unknown admin custom action received")
                     }
                 }
             }
@@ -182,18 +196,21 @@ impl AdminCommandHandler {
         };
 
         // TODO: Produce a Kafka message, saying that this guild's settings have been updated
-        let message = InteractionResponse::UpdateMessage(
+        let message = InteractionResponse { kind: InteractionResponseType::UpdateMessage, data: Some(
             CallbackDataBuilder::new()
                 .flags(MessageFlags::EPHEMERAL)
                 .content("Successfully set the matchmaking channel. Please wait a few moments for changes to take effect.".into())
                 .build()
-        );
+        )};
 
         let _res = self
             .utils
             .http_client
             .interaction(self.utils.application_id)
-            .interaction_callback(component.id, component.token.as_str(), &message)
+            .update_response(component.token.as_str())
+            .content(Some("Successfully set the matchmaking channel. Please wait a few moments for changes to take effect"))?
+            // .map_err(|e| RunbackError { message: "Could not set content for response message during set_matchmaking_channel()".to_owned(), inner: Some(Box::new(e)) })?
+            // .(component.id, component.token.as_str(), &message)
             .exec()
             .await?;
 
@@ -202,7 +219,10 @@ impl AdminCommandHandler {
 
     /// Called whenever `/admin mm-panels` is called by an admin user.
     #[tracing::instrument(skip_all)]
-    async fn on_mm_panels(&self, command: &DiscordApplicationCommand) -> Result<(), RunbackError> {
+    async fn on_mm_panels_command_received(
+        &self,
+        command: &DiscordApplicationCommand,
+    ) -> Result<(), RunbackError> {
         let guild_id = match command.guild_id {
             Some(id) => id,
             None => {
@@ -222,13 +242,14 @@ impl AdminCommandHandler {
         let text_channels = channels
             .into_iter()
             .filter_map(|c| {
-                let val = match c {
-                    GuildChannel::Text(t) => Some(t),
-                    _ => None,
+                let val = if let ChannelType::GuildText = c.kind {
+                    Some(c)
+                } else {
+                    None
                 };
                 val
             })
-            .collect::<Vec<TextChannel>>();
+            .collect::<Vec<Channel>>();
 
         let embed = EmbedBuilder::new()
             .title("Admin Panel")
@@ -258,11 +279,17 @@ impl AdminCommandHandler {
 
                 let text_channel = text_channel[0];
 
+                let name = if let Some(n) = &text_channel.name {
+                    n.as_str()
+                } else {
+                    "Unknown Channel Name"
+                };
+
                 Some(SelectMenuOption {
                     default: false,
                     description: p.game.to_owned(),
                     emoji: None,
-                    label: format!("#{}", text_channel.name),
+                    label: format!("#{}", name),
                     value: text_channel.id.to_string(),
                 })
             })
@@ -287,7 +314,7 @@ impl AdminCommandHandler {
         // When this button is called, update the embed and components of the original message
         components.push(Component::ActionRow(ActionRow {
             components: vec![Component::Button(Button {
-                custom_id: Some("admin:mm:panels:show_new".into()),
+                custom_id: Some("admin:mm:panels:add_new".into()),
                 disabled: false,
                 emoji: None,
                 label: Some("New Panel".into()),
@@ -297,12 +324,12 @@ impl AdminCommandHandler {
         }));
 
         callback_data = callback_data
-            .embeds(vec![embed.build().map_err(|e| RunbackError {
-                message: "Unable to build embed".into(),
-                inner: Some(e.into()),
-            })?])
+            .embeds(vec![embed.build()])
             .components(components);
-        let message = InteractionResponse::ChannelMessageWithSource(callback_data.build());
+        let message = InteractionResponse {
+            kind: InteractionResponseType::ChannelMessageWithSource,
+            data: Some(callback_data.build()),
+        };
 
         self.utils.send_message(command, &message).await?;
 
@@ -311,7 +338,37 @@ impl AdminCommandHandler {
 
     /// Called whenever an admin interacts with the mm panel.
     #[tracing::instrument(skip_all)]
-    async fn on_mm_panel_component_changed() {}
+    async fn on_mm_panel_component_changed(
+        &self,
+        component: &MessageComponentInteraction,
+        component_id: &str,
+        args: &[&str],
+    ) -> Result<(), RunbackError> {
+        match component_id {
+            "add_new" => {
+                // If the user is sending all the component data
+                if args.len() > 0 && args[0] == "create" {
+                    // Create the new panel
+                    self.create_new_mm_panel(component).await?;
+                    // Send the new panel with the interaction data
+                }
+
+                // Otherwise, update the message with all of the fields for the new panel
+            }
+            _ => {
+                warn!(component_id, "Unknown component_id found");
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn create_new_mm_panel(
+        &self,
+        component: &MessageComponentInteraction,
+    ) -> Result<(), RunbackError> {
+        Ok(())
+    }
 
     async fn send_matchamking_settings(
         &self,
@@ -337,40 +394,49 @@ impl AdminCommandHandler {
         let text_channels = channels
             .iter()
             .filter_map(|c| {
-                let val = match c {
-                    GuildChannel::Text(t) => Some(t),
+                let val = match c.kind {
+                    ChannelType::GuildText => Some(c),
                     _ => None,
                 };
                 val
             })
-            .collect::<Vec<&TextChannel>>();
+            .collect::<Vec<&Channel>>();
 
         debug!(channels = %format!("{:?}", text_channels), "Collected text channels");
 
-        let message = InteractionResponse::ChannelMessageWithSource(
-            CallbackDataBuilder::new()
-                .flags(MessageFlags::EPHEMERAL)
-                .components(vec![Component::ActionRow(ActionRow {
-                    components: vec![Component::SelectMenu(SelectMenu {
-                        custom_id: "admin:mm:channel".into(),
-                        disabled: false,
-                        max_values: Some(1),
-                        min_values: Some(1),
-                        options: text_channels
-                            .iter()
-                            .map(|chan| SelectMenuOption {
-                                default: false,
-                                description: None,
-                                emoji: None,
-                                label: format!("#{}", chan.name),
-                                value: chan.id.to_string(),
-                            })
-                            .collect::<Vec<SelectMenuOption>>(),
-                        placeholder: Some("Select the default matchmaking channel".into()),
-                    })],
-                })])
-                .build(),
-        );
+        let message = InteractionResponse {
+            kind: InteractionResponseType::ChannelMessageWithSource,
+            data: Some(
+                CallbackDataBuilder::new()
+                    .flags(MessageFlags::EPHEMERAL)
+                    .components(vec![Component::ActionRow(ActionRow {
+                        components: vec![Component::SelectMenu(SelectMenu {
+                            custom_id: "admin:mm:channel".into(),
+                            disabled: false,
+                            max_values: Some(1),
+                            min_values: Some(1),
+                            options: text_channels
+                                .iter()
+                                .map(|chan| SelectMenuOption {
+                                    default: false,
+                                    description: None,
+                                    emoji: None,
+                                    label: format!(
+                                        "#{}",
+                                        chan.name
+                                            .as_ref()
+                                            .expect("Guild text channel did not have a name")
+                                            .as_str()
+                                    ),
+                                    value: chan.id.to_string(),
+                                })
+                                .collect::<Vec<SelectMenuOption>>(),
+                            placeholder: Some("Select the default matchmaking channel".into()),
+                        })],
+                    })])
+                    .build(),
+            ),
+        };
 
         Ok(self.utils.send_message(command, &message).await?)
     }

@@ -5,7 +5,7 @@
 
 # TODO: move this off of edge as soon as there's a stable version of Alpine that has Rust 1.57.0
 FROM alpine:edge
-RUN apk add --no-cache 'cargo>1.57' openssl openssl-dev pkgconfig
+RUN apk add --no-cache 'cargo>1.57' openssl openssl-dev pkgconfig librdkafka cmake make gcc g++
 RUN cargo install cargo-watch
 VOLUME /var/app
 WORKDIR /var/app/discord-bot

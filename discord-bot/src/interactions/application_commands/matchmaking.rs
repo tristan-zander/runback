@@ -1,4 +1,7 @@
-use twilight_model::{id::{Id, marker::GuildMarker}, application::command::{Command, CommandType}};
+use twilight_model::{
+    application::command::{Command, CommandType},
+    id::{marker::GuildMarker, Id},
+};
 use twilight_util::builder::command::{CommandBuilder, SubCommandBuilder};
 
 use super::ApplicationCommand;
@@ -40,4 +43,3 @@ impl ApplicationCommand for MatchmakingCommandHandler {
         return comm;
     }
 }
-

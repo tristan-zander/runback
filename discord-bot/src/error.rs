@@ -1,9 +1,10 @@
-use std::{error::Error};
+use std::error::Error;
 
 use migration::DbErr;
 use tracing::instrument::Instrumented;
 use twilight_gateway::cluster::ClusterStartError;
 use twilight_http::response::DeserializeBodyError;
+use twilight_validate::message::MessageValidationError;
 
 #[derive(Debug)]
 pub struct RunbackError {
@@ -91,6 +92,15 @@ impl From<&str> for RunbackError {
         RunbackError {
             message: message.to_owned(),
             inner: None,
-        } 
+        }
+    }
+}
+
+impl From<MessageValidationError> for RunbackError {
+    fn from(e: MessageValidationError) -> Self {
+        RunbackError {
+            message: "Unable to validate message".to_owned(),
+            inner: Some(e.into()),
+        }
     }
 }

@@ -67,7 +67,7 @@ pub mod settings {
 
 /// The matchmaking panel that users can interact with
 pub mod panel {
-    use twilight_model::{id::marker::{ChannelMarker, MessageMarker}, channel::GuildChannel};
+    use twilight_model::id::marker::{ChannelMarker, GuildMarker, MessageMarker};
 
     use crate::IdWrapper;
 
@@ -78,7 +78,7 @@ pub mod panel {
     pub struct Model {
         #[sea_orm(primary_key, auto_increment = false)]
         pub panel_id: Uuid,
-        pub guild_id: IdWrapper<GuildChannel>,
+        pub guild_id: IdWrapper<GuildMarker>,
         #[sea_orm(unique)]
         pub message_id: IdWrapper<MessageMarker>,
         #[sea_orm(unique)]

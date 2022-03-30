@@ -4,18 +4,16 @@ use chrono::Utc;
 use entity::sea_orm::{ActiveModelTrait, EntityTrait, IntoActiveModel, Set};
 use twilight_model::{
     application::{
-        callback::InteractionResponse,
         command::CommandType,
         interaction::application_command::{
             ApplicationCommand as DiscordApplicationCommand, CommandOptionValue,
         },
     },
     channel::message::MessageFlags,
+    http::interaction::{InteractionResponse, InteractionResponseType},
 };
-use twilight_util::builder::{
-    command::{CommandBuilder, StringBuilder},
-    CallbackDataBuilder,
-};
+use twilight_util::builder::command::{CommandBuilder, StringBuilder};
+use twilight_util::builder::InteractionResponseDataBuilder as CallbackDataBuilder;
 
 use crate::RunbackError;
 
@@ -70,12 +68,15 @@ impl EULACommandHandler {
         let gid = if let Some(gid) = command.guild_id {
             gid
         } else {
-            let message = InteractionResponse::ChannelMessageWithSource(
-                CallbackDataBuilder::new()
-                    .content("You cannot use this command in a DM.".into())
-                    .flags(MessageFlags::EPHEMERAL)
-                    .build(),
-            );
+            let message = InteractionResponse {
+                data: Some(
+                    CallbackDataBuilder::new()
+                        .content("You cannot use this command in a DM.".into())
+                        .flags(MessageFlags::EPHEMERAL)
+                        .build(),
+                ),
+                kind: InteractionResponseType::ChannelMessageWithSource,
+            };
             return self.command_utils.send_message(command, &message).await;
         };
 
@@ -84,12 +85,15 @@ impl EULACommandHandler {
             match &options[0].value {
                 CommandOptionValue::String(accepted) => {
                     if accepted.as_str() != "accept" {
-                        let message = InteractionResponse::ChannelMessageWithSource(
+                        let message = InteractionResponse {
+                            data: Some(
                             CallbackDataBuilder::new()
                                 .content("You must accept the EULA to use Runback. Run \"/eula\" without any arguments to see the EULA.".into())
                                 .flags(MessageFlags::EPHEMERAL)
-                                .build(),
-                        );
+                                .build()
+                        ),
+                            kind: InteractionResponseType::ChannelMessageWithSource,
+                    };
                         self.command_utils.send_message(command, &message).await?;
 
                         error!(
@@ -106,22 +110,24 @@ impl EULACommandHandler {
                     match res {
                         Some(existing_settings) => {
                             if existing_settings.has_accepted_eula.is_some() {
-                                let message = InteractionResponse::ChannelMessageWithSource(
-                                    CallbackDataBuilder::new()
-                                        .content(
-                                            "Looks like you've already accepted the EULA.".into(),
-                                        )
-                                        .flags(MessageFlags::EPHEMERAL)
-                                        .build(),
-                                );
+                                let message = InteractionResponse {
+                                    data: Some(
+                                        CallbackDataBuilder::new()
+                                            .content(
+                                                "Looks like you've already accepted the EULA."
+                                                    .into(),
+                                            )
+                                            .flags(MessageFlags::EPHEMERAL)
+                                            .build(),
+                                    ),
+                                    kind: InteractionResponseType::ChannelMessageWithSource,
+                                };
                                 self.command_utils.send_message(command, &message).await?;
                                 return Ok(());
                             } else {
                                 let mut active = existing_settings.into_active_model();
                                 active.has_accepted_eula = Set(Some(Utc::now()));
-                                active
-                                    .update(self.command_utils.db_ref())
-                                    .await?;
+                                active.update(self.command_utils.db_ref()).await?;
                             }
                         }
                         None => {
@@ -132,30 +138,31 @@ impl EULACommandHandler {
                                 ..Default::default()
                             };
 
-                            settings
-                                .insert(self.command_utils.db_ref())
-                                .await?;
+                            settings.insert(self.command_utils.db_ref()).await?;
                         }
                     };
 
-                    let message = InteractionResponse::ChannelMessageWithSource(
+                    let message = InteractionResponse { kind: InteractionResponseType::ChannelMessageWithSource, data: Some(
                             CallbackDataBuilder::new()
                                 .content("Okay, thanks for accepted the EULA. You may now use Runback's services.".into())
                                 .flags(MessageFlags::EPHEMERAL)
                                 .build(),
-                        );
+                        )};
                     self.command_utils.send_message(command, &message).await?;
                 }
                 _ => {}
             }
         }
 
-        let message = InteractionResponse::ChannelMessageWithSource(
-            CallbackDataBuilder::new()
-                .content(EULA.into())
-                .flags(MessageFlags::EPHEMERAL)
-                .build(),
-        );
+        let message = InteractionResponse {
+            kind: InteractionResponseType::ChannelMessageWithSource,
+            data: Some(
+                CallbackDataBuilder::new()
+                    .content(EULA.into())
+                    .flags(MessageFlags::EPHEMERAL)
+                    .build(),
+            ),
+        };
 
         self.command_utils.send_message(command, &message).await?;
 
