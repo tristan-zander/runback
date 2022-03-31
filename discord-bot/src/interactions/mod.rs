@@ -53,6 +53,12 @@ impl InteractionHandler {
                     .on_message_component_event(message.as_ref())
                     .await?;
             }
+            twilight_model::application::interaction::Interaction::ModalSubmit(modal) => {
+                debug!("Received modal");
+                self.application_command_handlers
+                    .on_modal_submit(modal.as_ref())
+                    .await?;
+            }
             _ => {
                 debug!(interaction = %format!("{:?}", interaction), "Unhandled interaction");
             }

@@ -2,18 +2,21 @@ use std::{error::Error, sync::Arc};
 
 use chrono::Utc;
 use entity::{
-    sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter},
+    sea_orm::{
+        prelude::Uuid, ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter,
+    },
     IdWrapper,
 };
 use twilight_model::{
     application::{
         command::{Command, CommandType},
         component::{
-            button::ButtonStyle, select_menu::SelectMenuOption, ActionRow, Button, Component,
-            SelectMenu,
+            button::ButtonStyle, select_menu::SelectMenuOption, text_input::TextInputStyle,
+            ActionRow, Button, Component, SelectMenu, TextInput,
         },
         interaction::{
-            ApplicationCommand as DiscordApplicationCommand, MessageComponentInteraction,
+            modal::ModalSubmitInteraction, ApplicationCommand as DiscordApplicationCommand,
+            MessageComponentInteraction,
         },
     },
     channel::{message::MessageFlags, Channel, ChannelType},
@@ -149,6 +152,99 @@ impl AdminCommandHandler {
         Ok(())
     }
 
+    #[tracing::instrument(skip_all)]
+    pub async fn on_modal_submit(
+        &self,
+        id_parts: Vec<&str>,
+        modal: &ModalSubmitInteraction,
+    ) -> Result<(), RunbackError> {
+        let sub_group = *id_parts
+            .get(1)
+            .ok_or("Could not get message component sub_group")?;
+        let action_id = *id_parts
+            .get(2)
+            .ok_or("Could not get message component action_id")?;
+
+        match sub_group {
+            "mm" => match action_id {
+                "panel" => {
+                    let modal_kind = *id_parts.get(3).ok_or("Could not get admin mm modal_kind")?;
+                    let args = &id_parts[3..];
+                    self.on_mm_panel_modal_submit(modal, modal_kind, args)
+                        .await?;
+                }
+                _ => {
+                    warn!(action = %action_id, group = %sub_group, parts = %format!("{:?}", id_parts), "Unknown matchmaking panel modal received")
+                }
+            },
+            _ => {
+                warn!(sub_group = %sub_group, custom_id = %&modal.data.custom_id, "Unknown admin modal received")
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn on_mm_panel_modal_submit(
+        &self,
+        modal: &ModalSubmitInteraction,
+        modal_kind: &str,
+        args: &[&str],
+    ) -> Result<(), RunbackError> {
+        match modal_kind {
+            "new" => {
+                let game_raw = modal.data.components[0].components[0].value.to_owned();
+                let comment_raw = modal.data.components[1].components[0].value.to_owned();
+
+                let game = if game_raw.len() == 0 {
+                    None
+                } else {
+                    Some(game_raw)
+                };
+
+                let comment = if comment_raw.len() == 0 {
+                    None
+                } else {
+                    Some(comment_raw)
+                };
+
+                self.create_new_mm_panel_from_modal(game, comment, modal.guild_id.unwrap())
+                    .await?;
+            }
+            _ => {
+                warn!(modal_kind = %modal_kind, parts = %format!("{:?}", args), "Unknown modal_kind");
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn create_new_mm_panel_from_modal(
+        &self,
+        game: Option<String>,
+        comment: Option<String>,
+        guild_id: Id<GuildMarker>,
+    ) -> Result<(), RunbackError> {
+        let panel = entity::matchmaking::panel::Model {
+            panel_id: Uuid::new_v4(),
+            guild_id: guild_id.into(),
+            message_id: None,
+            channel_id: None,
+            game,
+            comment,
+        };
+
+        let res = entity::matchmaking::Panel::insert(panel.into_active_model())
+            .exec(self.utils.db_ref())
+            .await?;
+
+        debug!(res = %format!("{:?}", res), "Panel insert result");
+
+        todo!("Respond to the user and update the intitial interaction");
+
+        Ok(())
+    }
+
     async fn set_matchmaking_channel(
         &self,
         component: &MessageComponentInteraction,
@@ -269,11 +365,16 @@ impl AdminCommandHandler {
             .filter_map(|p| {
                 let text_channel = text_channels
                     .iter()
-                    .filter(|t| p.channel_id == t.id.into())
+                    .filter(|t| {
+                        if let Some(chan) = &p.channel_id {
+                            return *chan == t.id.into();
+                        }
+                        return false;
+                    })
                     .collect::<Vec<_>>();
 
                 if text_channel.len() != 1 {
-                    warn!(id = %p.channel_id, channels = %format!("{:?}", text_channel), "Found multiple or no text channels by single id");
+                    warn!(id = %format!("{:?}", p.channel_id), channels = %format!("{:?}", text_channel), "Found multiple or no text channels by single id");
                     return None;
                 }
 
@@ -352,6 +453,54 @@ impl AdminCommandHandler {
                     self.create_new_mm_panel(component).await?;
                     // Send the new panel with the interaction data
                 }
+
+                let data = CallbackDataBuilder::new()
+                    .components(vec![
+                        Component::ActionRow(ActionRow {
+                            components: vec![Component::TextInput(TextInput {
+                                custom_id: "admin:mm:panels:modal:game".to_owned(),
+                                label: "Game title".to_string(),
+                                max_length: Some(100),
+                                min_length: None,
+                                placeholder: Some(
+                                    "Enter the title of the game that is related to this panel."
+                                        .to_owned(),
+                                ),
+                                required: Some(false),
+                                style: TextInputStyle::Short,
+                                value: None,
+                            })],
+                        }),
+                        Component::ActionRow(ActionRow {
+                            components: vec![Component::TextInput(TextInput {
+                                custom_id: "admin:mm:panels:modal:comment".to_owned(),
+                                label: "Panel comment".to_string(),
+                                max_length: Some(100),
+                                min_length: None,
+                                placeholder: Some(
+                                    "Enter a comment that you want to attach to this panel."
+                                        .to_owned(),
+                                ),
+                                required: Some(false),
+                                style: TextInputStyle::Paragraph,
+                                value: None,
+                            })],
+                        }),
+                    ])
+                    .title("Create a new Matchmaking Panel".to_owned())
+                    .custom_id("admin:mm:panel:new".to_owned())
+                    .build();
+                let message = InteractionResponse {
+                    kind: InteractionResponseType::Modal,
+                    data: Some(data),
+                };
+
+                self.utils
+                    .http_client
+                    .interaction(self.utils.application_id)
+                    .create_response(component.id, component.token.as_str(), &message)
+                    .exec()
+                    .await?;
 
                 // Otherwise, update the message with all of the fields for the new panel
             }

@@ -10,7 +10,8 @@ use twilight_model::{
     application::{
         command::{Command, CommandType},
         interaction::{
-            ApplicationCommand as DiscordApplicationCommand, MessageComponentInteraction,
+            modal::ModalSubmitInteraction, ApplicationCommand as DiscordApplicationCommand,
+            MessageComponentInteraction,
         },
     },
     channel::message::MessageFlags,
@@ -144,6 +145,32 @@ impl ApplicationCommandHandlers {
             "admin" => {
                 self.admin_command_handler
                     .on_message_component_event(id_parts, message)
+                    .await?
+            }
+            _ => {
+                warn!(custom_id = %custom_id, "Unknown message component event")
+            }
+        };
+
+        Ok(())
+    }
+
+    #[tracing::instrument(skip_all)]
+    pub async fn on_modal_submit(
+        &self,
+        modal: &ModalSubmitInteraction,
+    ) -> Result<(), RunbackError> {
+        debug!(modal = %format!("{:?}", modal), "TODO: handle message component interaction");
+
+        let custom_id = modal.data.custom_id.as_str();
+
+        let id_parts = custom_id.split(':').collect::<Vec<_>>();
+        let namespace: &str = id_parts[0];
+
+        let _res = match namespace {
+            "admin" => {
+                self.admin_command_handler
+                    .on_modal_submit(id_parts, modal)
                     .await?
             }
             _ => {

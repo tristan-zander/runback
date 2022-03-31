@@ -79,13 +79,18 @@ pub mod panel {
         #[sea_orm(primary_key, auto_increment = false)]
         pub panel_id: Uuid,
         pub guild_id: IdWrapper<GuildMarker>,
-        #[sea_orm(unique)]
-        pub message_id: IdWrapper<MessageMarker>,
-        #[sea_orm(unique)]
-        pub channel_id: IdWrapper<ChannelMarker>,
-        #[sea_orm(nullable)]
+        #[sea_orm(unique, nullable)]
+        pub message_id: Option<IdWrapper<MessageMarker>>,
+        #[sea_orm(unique, nullable)]
+        pub channel_id: Option<IdWrapper<ChannelMarker>>,
+        
         /// 80 Character Game Title
+        #[sea_orm(nullable)]
         pub game: Option<String>,
+        
+        /// 255 Character Game Title
+        #[sea_orm(nullable)]
+        pub comment: Option<String>,
     }
 
     impl Model {
