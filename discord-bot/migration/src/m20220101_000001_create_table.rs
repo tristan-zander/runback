@@ -64,16 +64,15 @@ impl MigrationTrait for Migration {
                     .col(
                         ColumnDef::new(matchmaking::panel::Column::ChannelId)
                             .big_integer()
-                            .not_null()
                             .unique_key(),
                     )
                     .col(
                         ColumnDef::new(matchmaking::panel::Column::MessageId)
                             .big_integer()
                             .unique_key()
-                            .not_null(),
                     )
                     .col(ColumnDef::new(matchmaking::panel::Column::Game).string_len(80))
+                    .col(ColumnDef::new(matchmaking::panel::Column::Comment).string_len(255))
                     .to_owned(),
             )
             .await?;
