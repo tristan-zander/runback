@@ -15,8 +15,8 @@ use twilight_model::{
             ActionRow, Button, Component, SelectMenu, TextInput,
         },
         interaction::{
-            modal::ModalSubmitInteraction, ApplicationCommand as DiscordApplicationCommand,
-            MessageComponentInteraction,
+            modal::{ModalInteractionData, ModalSubmitInteraction},
+            ApplicationCommand as DiscordApplicationCommand, MessageComponentInteraction,
         },
     },
     channel::{message::MessageFlags, Channel, ChannelType},
@@ -32,11 +32,15 @@ use twilight_util::builder::{
     InteractionResponseDataBuilder as CallbackDataBuilder,
 };
 
-use crate::RunbackError;
+use crate::{
+    interactions::panels::{
+        self,
+        mm_panel::{AdminViewAllPanel, AdminViewSinglePanel},
+    },
+    RunbackError,
+};
 
 use super::{ApplicationCommand, ApplicationCommandUtilities};
-
-mod panel_model;
 
 #[derive(Debug)]
 struct AdminCommandHandlerError {
@@ -185,6 +189,7 @@ impl AdminCommandHandler {
         Ok(())
     }
 
+    #[tracing::instrument(skip_all)]
     async fn on_mm_panel_modal_submit(
         &self,
         modal: &ModalSubmitInteraction,
@@ -208,7 +213,7 @@ impl AdminCommandHandler {
                     Some(comment_raw)
                 };
 
-                self.create_new_mm_panel_from_modal(game, comment, modal.guild_id.unwrap())
+                self.create_new_mm_panel_from_modal(modal, game, comment, modal.guild_id.unwrap())
                     .await?;
             }
             _ => {
@@ -221,6 +226,7 @@ impl AdminCommandHandler {
 
     async fn create_new_mm_panel_from_modal(
         &self,
+        modal: &ModalSubmitInteraction,
         game: Option<String>,
         comment: Option<String>,
         guild_id: Id<GuildMarker>,
@@ -234,13 +240,50 @@ impl AdminCommandHandler {
             comment,
         };
 
-        let res = entity::matchmaking::Panel::insert(panel.into_active_model())
+        let res = entity::matchmaking::Panel::insert(panel.clone().into_active_model())
             .exec(self.utils.db_ref())
             .await?;
 
         debug!(res = %format!("{:?}", res), "Panel insert result");
 
-        todo!("Respond to the user and update the intitial interaction");
+        let channels = self
+            .utils
+            .http_client
+            .guild_channels(guild_id)
+            .exec()
+            .await?
+            .models()
+            .await?;
+
+        let text_channels = channels
+            .into_iter()
+            .filter_map(|c| {
+                let val = if let ChannelType::GuildText = c.kind {
+                    Some(c)
+                } else {
+                    None
+                };
+                val
+            })
+            .collect::<Vec<Channel>>();
+
+        let panel_view = AdminViewSinglePanel {
+            panel: &panel,
+            text_channels: text_channels.as_slice(),
+        };
+
+        let response = InteractionResponse {
+            kind: InteractionResponseType::ChannelMessageWithSource,
+            data: Some(panel_view.create().build()),
+        };
+
+        let _res = self
+            .utils
+            .http_client
+            .interaction(self.utils.application_id)
+            .create_response(modal.id, modal.token.as_str(), &response)
+            .exec()
+            .await?;
 
         Ok(())
     }
@@ -347,11 +390,6 @@ impl AdminCommandHandler {
             })
             .collect::<Vec<Channel>>();
 
-        let embed = EmbedBuilder::new()
-            .title("Admin Panel")
-            .description("Please select a panel.");
-        let mut callback_data = CallbackDataBuilder::new().flags(MessageFlags::EPHEMERAL);
-
         let panels = entity::matchmaking::Panel::find()
             .filter(
                 entity::matchmaking::panel::Column::GuildId
@@ -360,73 +398,14 @@ impl AdminCommandHandler {
             .all(self.utils.db_ref())
             .await?;
 
-        let select_menu_options: Vec<_> = panels
-            .iter()
-            .filter_map(|p| {
-                let text_channel = text_channels
-                    .iter()
-                    .filter(|t| {
-                        if let Some(chan) = &p.channel_id {
-                            return *chan == t.id.into();
-                        }
-                        return false;
-                    })
-                    .collect::<Vec<_>>();
+        let panel = AdminViewAllPanel {
+            guild_id,
+            text_channels: text_channels.as_slice(),
+            panels: panels.as_slice(),
+        };
 
-                if text_channel.len() != 1 {
-                    warn!(id = %format!("{:?}", p.channel_id), channels = %format!("{:?}", text_channel), "Found multiple or no text channels by single id");
-                    return None;
-                }
+        let callback_data = panel.create();
 
-                let text_channel = text_channel[0];
-
-                let name = if let Some(n) = &text_channel.name {
-                    n.as_str()
-                } else {
-                    "Unknown Channel Name"
-                };
-
-                Some(SelectMenuOption {
-                    default: false,
-                    description: p.game.to_owned(),
-                    emoji: None,
-                    label: format!("#{}", name),
-                    value: text_channel.id.to_string(),
-                })
-            })
-            .collect();
-
-        let mut components = Vec::new();
-
-        if select_menu_options.len() > 0 {
-            let select_menu_row = Component::ActionRow(ActionRow {
-                components: vec![Component::SelectMenu(SelectMenu {
-                    custom_id: "admin:mm:panels:select_existing".into(),
-                    disabled: false,
-                    max_values: Some(1),
-                    min_values: Some(1),
-                    options: select_menu_options,
-                    placeholder: Some("Select a panel".into()),
-                })],
-            });
-            components.push(select_menu_row);
-        }
-
-        // When this button is called, update the embed and components of the original message
-        components.push(Component::ActionRow(ActionRow {
-            components: vec![Component::Button(Button {
-                custom_id: Some("admin:mm:panels:add_new".into()),
-                disabled: false,
-                emoji: None,
-                label: Some("New Panel".into()),
-                style: ButtonStyle::Primary,
-                url: None,
-            })],
-        }));
-
-        callback_data = callback_data
-            .embeds(vec![embed.build()])
-            .components(components);
         let message = InteractionResponse {
             kind: InteractionResponseType::ChannelMessageWithSource,
             data: Some(callback_data.build()),
@@ -503,6 +482,56 @@ impl AdminCommandHandler {
                     .await?;
 
                 // Otherwise, update the message with all of the fields for the new panel
+            }
+            "select" => {
+                debug!(values = %format!("{:#?}", component.data.values));
+
+                let panel = entity::matchmaking::Panel::find_by_id(
+                    Uuid::parse_str(component.data.values[0].as_str()).unwrap(),
+                )
+                .one(self.utils.db_ref())
+                .await?
+                .unwrap();
+
+                let channels = self
+                    .utils
+                    .http_client
+                    .guild_channels(component.guild_id.unwrap())
+                    .exec()
+                    .await?
+                    .models()
+                    .await?;
+
+                let text_channels = channels
+                    .into_iter()
+                    .filter_map(|c| {
+                        let val = if let ChannelType::GuildText = c.kind {
+                            Some(c)
+                        } else {
+                            None
+                        };
+                        val
+                    })
+                    .collect::<Vec<Channel>>();
+
+                let panel_view = AdminViewSinglePanel {
+                    panel: &panel,
+                    text_channels: text_channels.as_slice(),
+                };
+                let callback_data = panel_view.create();
+
+                let message = InteractionResponse {
+                    kind: InteractionResponseType::ChannelMessageWithSource,
+                    data: Some(callback_data.build()),
+                };
+
+                let _res = self
+                    .utils
+                    .http_client
+                    .interaction(self.utils.application_id)
+                    .create_response(component.id, component.token.as_str(), &message)
+                    .exec()
+                    .await?;
             }
             _ => {
                 warn!(component_id, "Unknown component_id found");

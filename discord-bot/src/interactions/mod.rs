@@ -1,4 +1,5 @@
 pub mod application_commands;
+pub mod panels;
 
 use std::sync::Arc;
 
