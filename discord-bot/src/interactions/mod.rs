@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use entity::sea_orm::DatabaseConnection;
 
+use anyhow::Result;
 use twilight_gateway::Shard;
 use twilight_model::gateway::payload::incoming::InteractionCreate;
 
@@ -17,12 +18,19 @@ pub struct InteractionHandler {
 }
 
 impl InteractionHandler {
-    pub async fn init(db: Arc<Box<DatabaseConnection>>) -> Result<Self, RunbackError> {
-        let application_command_handlers = ApplicationCommandHandlers::new(db).await?;
-        application_command_handlers
+    pub async fn init(db: Arc<Box<DatabaseConnection>>) -> Result<Self> {
+        let application_command_handlers = match ApplicationCommandHandlers::new(db).await {
+            Ok(h) => h,
+            Err(e) => return Err(anyhow!("Encountered error: {}", e)),
+        };
+        match application_command_handlers
             .utils
             .register_all_application_commands()
-            .await?;
+            .await
+        {
+            Ok(h) => h,
+            Err(e) => return Err(anyhow!("Encountered error: {}", e)),
+        };
         Ok(Self {
             application_command_handlers,
         })

@@ -2,7 +2,11 @@
 extern crate tracing;
 #[macro_use]
 extern crate lazy_static;
+#[macro_use]
+extern crate anyhow;
 
+use anyhow::{Context, Result};
+use calloop::EventLoop;
 use config::Config;
 use entity::sea_orm::{ConnectOptions, Database, DatabaseConnection};
 use error::RunbackError;
@@ -13,11 +17,12 @@ use twilight_gateway::{cluster::ShardScheme, Cluster, Intents};
 
 use twilight_model::gateway::event::Event;
 
-use crate::interactions::InteractionHandler;
+use crate::{eventing::EventData, interactions::InteractionHandler};
 
 mod client;
 mod config;
 mod error;
+mod eventing;
 mod interactions;
 
 // DO NOT STORE THE CONFIG FOR LONG PERIODS OF TIME! IT CAN BE CHANGED ON A WHIM (in the future)
@@ -25,8 +30,9 @@ lazy_static! {
     static ref CONFIG: Arc<Box<Config>> = Arc::new(Box::new(Config::new().unwrap()));
 }
 
+// TODO: Remove all RunbackErrors in favor of using custom erorrs with the anyhow crate
 #[tokio::main]
-async fn main() -> Result<(), RunbackError> {
+async fn main() -> Result<()> {
     tracing_subscriber::fmt()
         .with_level(true)
         .with_target(true)
@@ -34,7 +40,10 @@ async fn main() -> Result<(), RunbackError> {
         //.json()
         .init();
 
-    let db = connect_to_database().await?;
+    let db = match connect_to_database().await {
+        Ok(db) => db,
+        Err(e) => return Err(anyhow!("Could not connect to the database: {}", e)),
+    };
     info!("Successfully connected to database.");
 
     let interactions = Arc::new(InteractionHandler::init(db.clone()).await?); // Register guild commands
@@ -59,6 +68,18 @@ async fn main() -> Result<(), RunbackError> {
         cluster_spawn.up().await;
     });
 
+    let mut ev_loop = EventLoop::<EventData>::try_new()?;
+
+    let discord_events = eventing::DiscordGatewayEvents::new(cluster.clone(), events)?;
+    ev_loop
+        .handle()
+        .insert_source(discord_events, |event, _meta, data| {
+            debug!("{:#?}", event);
+        })
+        .map_err(|e| {
+            anyhow::Error::new(e.error).context("Failed to insert discord event source")
+        })?;
+
     // Since we only care about new messages, make the cache only
     // cache new messages.
     let cache = InMemoryCache::builder()
@@ -69,42 +90,42 @@ async fn main() -> Result<(), RunbackError> {
         .build();
 
     // Process each event as they come in.
-    while let Some((shard_id, event)) = events.next().await {
-        let cluster_ref = cluster.clone();
+    // while let Some((shard_id, event)) = events.next().await {
+    //     let cluster_ref = cluster.clone();
 
-        // Update the cache with the event.
-        cache.update(&event);
+    //     // Update the cache with the event.
+    //     cache.update(&event);
 
-        trace!(ev = %format!("{:?}", event), "Received Discord event");
+    //     trace!(ev = %format!("{:?}", event), "Received Discord event");
 
-        let _shard = match cluster_ref.shard(shard_id) {
-            Some(s) => s,
-            None => {
-                error!(shard = %shard_id, "Invalid shard received during event");
-                // Do some error handling here.
-                continue;
-            }
-        };
+    //     let _shard = match cluster_ref.shard(shard_id) {
+    //         Some(s) => s,
+    //         None => {
+    //             error!(shard = %shard_id, "Invalid shard received during event");
+    //             // Do some error handling here.
+    //             continue;
+    //         }
+    //     };
 
-        match event {
-            Event::Ready(_) => info!("Bot is ready!"),
-            Event::InteractionCreate(i) => {
-                let interaction_ref = interactions.clone();
-                tokio::spawn(async move {
-                    let shard = cluster_ref.shard(shard_id).unwrap();
-                    let res = interaction_ref.handle_interaction(i, shard).await;
-                    if let Err(e) = res {
-                        error!(error = %e, "Error occurred while handling interactions.");
-                        debug!(debug_error = %format!("{:?}", e), "Error occurred while handling interactions.");
-                    }
-                });
-            }
-            Event::GatewayHeartbeatAck => {
-                // ignore
-            }
-            _ => debug!(kind = %format!("{:?}", event.kind()), "Unhandled event"),
-        }
-    }
+    //     match event {
+    //         Event::Ready(_) => info!("Bot is ready!"),
+    //         Event::InteractionCreate(i) => {
+    //             let interaction_ref = interactions.clone();
+    //             tokio::spawn(async move {
+    //                 let shard = cluster_ref.shard(shard_id).unwrap();
+    //                 let res = interaction_ref.handle_interaction(i, shard).await;
+    //                 if let Err(e) = res {
+    //                     error!(error = %e, "Error occurred while handling interactions.");
+    //                     debug!(debug_error = %format!("{:?}", e), "Error occurred while handling interactions.");
+    //                 }
+    //             });
+    //         }
+    //         Event::GatewayHeartbeatAck => {
+    //             // ignore
+    //         }
+    //         _ => debug!(kind = %format!("{:?}", event.kind()), "Unhandled event"),
+    //     }
+    // }
 
     return Ok(());
 }
