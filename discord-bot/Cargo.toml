@@ -10,6 +10,7 @@ edition = "2021"
 common = { path = "../common" }
 entity = { path = "entity" }
 migration = { path = "migration" }
+anyhow = { version = "1.0.57" }
 figment = { version = "0.10", features = ["toml", "env"] }
 serde = "1.0.133"
 serde_json = "1.0.79"
