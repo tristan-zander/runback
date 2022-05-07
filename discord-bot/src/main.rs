@@ -63,6 +63,9 @@ async fn main() -> Result<(), RunbackError> {
     // cache new messages.
     let cache = InMemoryCache::builder()
         .resource_types(ResourceType::MESSAGE)
+        .resource_types(ResourceType::CHANNEL)
+        .resource_types(ResourceType::MEMBER)
+        .resource_types(ResourceType::USER)
         .build();
 
     // Process each event as they come in.
@@ -72,7 +75,7 @@ async fn main() -> Result<(), RunbackError> {
         // Update the cache with the event.
         cache.update(&event);
 
-        debug!(ev = %format!("{:?}", event), "Received Discord event");
+        trace!(ev = %format!("{:?}", event), "Received Discord event");
 
         let _shard = match cluster_ref.shard(shard_id) {
             Some(s) => s,
@@ -95,6 +98,9 @@ async fn main() -> Result<(), RunbackError> {
                         debug!(debug_error = %format!("{:?}", e), "Error occurred while handling interactions.");
                     }
                 });
+            }
+            Event::GatewayHeartbeatAck => {
+                // ignore
             }
             _ => debug!(kind = %format!("{:?}", event.kind()), "Unhandled event"),
         }
