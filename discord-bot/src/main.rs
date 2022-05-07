@@ -2,6 +2,8 @@
 extern crate tracing;
 #[macro_use]
 extern crate lazy_static;
+#[macro_use]
+extern crate anyhow;
 
 use config::Config;
 use entity::sea_orm::{ConnectOptions, Database, DatabaseConnection};
@@ -15,6 +17,8 @@ use twilight_model::gateway::event::Event;
 
 use crate::interactions::InteractionHandler;
 
+use anyhow::Result;
+
 mod client;
 mod config;
 mod error;
@@ -26,7 +30,7 @@ lazy_static! {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), RunbackError> {
+async fn main() -> Result<()> {
     tracing_subscriber::fmt()
         .with_level(true)
         .with_target(true)
@@ -34,10 +38,14 @@ async fn main() -> Result<(), RunbackError> {
         //.json()
         .init();
 
-    let db = connect_to_database().await?;
+    let db = connect_to_database()
+        .await
+        .map_err(|e| anyhow!("Could not connect to database: {}", e))?;
     info!("Successfully connected to database.");
 
-    let interactions = Arc::new(InteractionHandler::init(db.clone()).await?); // Register guild commands
+    let interactions = Arc::new(InteractionHandler::init(db.clone()).await.map_err(
+        |e| -> anyhow::Error { anyhow!("Could not create interaction command handler: {}", e) },
+    )?); // Register guild commands
     info!("Registered guild commands");
 
     // This is the default scheme. It will automatically create as many
