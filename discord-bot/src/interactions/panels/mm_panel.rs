@@ -27,7 +27,8 @@ impl<'a> AdminViewAllPanel<'a> {
     }
 
     pub fn components(&self) -> Vec<Component> {
-        let select_menu_options: Vec<_> = self.panels
+        let select_menu_options: Vec<_> = self
+            .panels
             .iter()
             .filter_map(|p| {
                 // let text_channel = self.text_channels
@@ -139,14 +140,6 @@ impl<'a> AdminViewSinglePanel<'a> {
                         style: ButtonStyle::Primary,
                         url: None,
                     }),
-                    Component::Button(Button {
-                        custom_id: Some("admin:mm:panels:delete".into()),
-                        disabled: false,
-                        emoji: None,
-                        label: Some("Delete Panel".into()),
-                        style: ButtonStyle::Danger,
-                        url: None,
-                    }),
                 ],
             }),
             Component::ActionRow(ActionRow {
@@ -179,6 +172,26 @@ impl<'a> AdminViewSinglePanel<'a> {
                         .collect::<Vec<_>>(),
                     placeholder: Some("Change the channel that the panel is posted in".into()),
                 })],
+            }),
+            Component::ActionRow(ActionRow {
+                components: vec![
+                    Component::Button(Button {
+                        custom_id: Some("admin:mm:panels:repost".into()),
+                        disabled: false,
+                        emoji: None,
+                        label: Some("Repost Message".into()),
+                        style: ButtonStyle::Primary,
+                        url: None,
+                    }),
+                    Component::Button(Button {
+                        custom_id: Some(format!("{}:{}", "admin:mm:panels:delete", self.panel.panel_id.to_string())),
+                        disabled: false,
+                        emoji: None,
+                        label: Some("Delete Panel".into()),
+                        style: ButtonStyle::Danger,
+                        url: None,
+                    }),
+                ],
             }),
         ]
     }

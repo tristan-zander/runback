@@ -429,7 +429,8 @@ impl AdminCommandHandler {
                 // If the user is sending all the component data
                 if args.len() > 0 && args[0] == "create" {
                     // Create the new panel
-                    self.create_new_mm_panel(component).await?;
+                    // self.create_new_mm_panel(component).await?;
+                    todo!("Send the mm admin panel");
                     // Send the new panel with the interaction data
                 }
 
@@ -532,6 +533,41 @@ impl AdminCommandHandler {
                     .create_response(component.id, component.token.as_str(), &message)
                     .exec()
                     .await?;
+            }
+            "delete" => {
+                let panel =
+                    entity::matchmaking::Panel::delete(entity::matchmaking::panel::ActiveModel {
+                        panel_id: entity::sea_orm::Set(
+                            Uuid::parse_str(component.data.custom_id.split(':').last().unwrap()).unwrap(),
+                        ),
+                        ..Default::default()
+                    })
+                    .exec(self.utils.db_ref())
+                    .await?;
+                let message = InteractionResponse {
+                    kind: InteractionResponseType::UpdateMessage,
+                    data: Some(CallbackDataBuilder::new()
+                        .content("Panel successfully deleted".into())
+                        .components(vec![])
+                        .build()),
+                };
+                
+                let _res = self
+                    .utils
+                    .http_client
+                    .interaction(self.utils.application_id)
+                    .create_response(component.id, component.token.as_str(), &message)
+                    .exec()
+                    .await?;
+
+                // TODO: Update the original interaction if it exists.
+            }
+            "change" => {
+                match args[0] {
+                    _ => {
+                        warn!(arg = %args[0], "Unhandled argument found during \"change\" operation");
+                    }
+                }
             }
             _ => {
                 warn!(component_id, "Unknown component_id found");
