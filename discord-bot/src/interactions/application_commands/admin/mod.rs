@@ -4,6 +4,7 @@ use chrono::Utc;
 use entity::{
     sea_orm::{
         prelude::Uuid, ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter,
+        Set,
     },
     IdWrapper,
 };
@@ -29,14 +30,11 @@ use twilight_model::{
 use twilight_util::builder::{
     command::{CommandBuilder, SubCommandBuilder},
     embed::EmbedBuilder,
-    InteractionResponseDataBuilder as CallbackDataBuilder,
+    InteractionResponseDataBuilder,
 };
 
 use crate::{
-    interactions::panels::{
-        self,
-        mm_panel::{AdminViewAllPanel, AdminViewSinglePanel},
-    },
+    interactions::panels::mm_panel::{AdminViewAllPanel, AdminViewSinglePanel, MatchmakingPanel},
     RunbackError,
 };
 
@@ -336,7 +334,7 @@ impl AdminCommandHandler {
 
         // TODO: Produce a Kafka message, saying that this guild's settings have been updated
         let message = InteractionResponse { kind: InteractionResponseType::UpdateMessage, data: Some(
-            CallbackDataBuilder::new()
+            InteractionResponseDataBuilder::new()
                 .flags(MessageFlags::EPHEMERAL)
                 .content("Successfully set the matchmaking channel. Please wait a few moments for changes to take effect.".into())
                 .build()
@@ -434,7 +432,7 @@ impl AdminCommandHandler {
                     // Send the new panel with the interaction data
                 }
 
-                let data = CallbackDataBuilder::new()
+                let data = InteractionResponseDataBuilder::new()
                     .components(vec![
                         Component::ActionRow(ActionRow {
                             components: vec![Component::TextInput(TextInput {
@@ -538,7 +536,8 @@ impl AdminCommandHandler {
                 let panel =
                     entity::matchmaking::Panel::delete(entity::matchmaking::panel::ActiveModel {
                         panel_id: entity::sea_orm::Set(
-                            Uuid::parse_str(component.data.custom_id.split(':').last().unwrap()).unwrap(),
+                            Uuid::parse_str(component.data.custom_id.split(':').last().unwrap())
+                                .unwrap(),
                         ),
                         ..Default::default()
                     })
@@ -546,12 +545,14 @@ impl AdminCommandHandler {
                     .await?;
                 let message = InteractionResponse {
                     kind: InteractionResponseType::UpdateMessage,
-                    data: Some(CallbackDataBuilder::new()
-                        .content("Panel successfully deleted".into())
-                        .components(vec![])
-                        .build()),
+                    data: Some(
+                        InteractionResponseDataBuilder::new()
+                            .content("Panel successfully deleted".into())
+                            .components(vec![])
+                            .build(),
+                    ),
                 };
-                
+
                 let _res = self
                     .utils
                     .http_client
@@ -562,13 +563,107 @@ impl AdminCommandHandler {
 
                 // TODO: Update the original interaction if it exists.
             }
-            "change" => {
-                match args[0] {
-                    _ => {
-                        warn!(arg = %args[0], "Unhandled argument found during \"change\" operation");
+            "change" => match args[1] {
+                "channel" => {
+                    let new_channel_id = component.data.values.get(0).unwrap();
+                    let mm_channel = Id::<ChannelMarker>::new(new_channel_id[1..].parse().unwrap());
+                    let panel_id =
+                        Uuid::parse_str(component.data.custom_id.split(':').last().unwrap())
+                            .unwrap();
+
+                    let panel_model = entity::matchmaking::panel::ActiveModel {
+                        panel_id: Set(panel_id),
+                        channel_id: Set(Some(mm_channel.into())),
+                        ..Default::default()
+                    };
+
+                    let res = panel_model.update(self.utils.db_ref()).await?;
+
+                    // Also query from discord to check and see if the message is still there
+                    if res.message_id.is_some() {
+                        // TODO: Repost the message in the correct spot
+                    } else {
+                        // Post the mm panel to that channel
+                        let panel = MatchmakingPanel { model: &res };
+
+                        let data = panel.components();
+
+                        let r = self
+                            .utils
+                            .http_client
+                            .create_message(mm_channel)
+                            // .components(data.as_slice())
+                            // .unwrap()
+                            .embeds(&[panel.embed()])
+                            .unwrap()
+                            .exec()
+                            .await?;
+
+                        debug!(message = %format!("{:#?}", r));
+
+                        let panel_model = entity::matchmaking::panel::ActiveModel {
+                            panel_id: Set(panel_id),
+                            message_id: Set(Some(r.model().await.unwrap().id.into())),
+                            ..Default::default()
+                        };
+                        let final_model = panel_model.update(self.utils.db_ref()).await?;
+
+                        let channels = self
+                            .utils
+                            .http_client
+                            .guild_channels(component.guild_id.unwrap())
+                            .exec()
+                            .await?
+                            .models()
+                            .await?;
+
+                        let text_channels = channels
+                            .into_iter()
+                            .filter_map(|c| {
+                                let val = if let ChannelType::GuildText = c.kind {
+                                    Some(c)
+                                } else {
+                                    None
+                                };
+                                val
+                            })
+                            .collect::<Vec<Channel>>();
+
+                        let admin_view = AdminViewSinglePanel {
+                            panel: &final_model,
+                            text_channels: text_channels.as_slice(),
+                        };
+
+                        let update_message_res = self
+                            .utils
+                            .http_client
+                            .interaction(self.utils.application_id)
+                            .create_response(
+                                component.id,
+                                component.token.as_str(),
+                                &InteractionResponse {
+                                    kind: InteractionResponseType::UpdateMessage,
+                                    data: Some(
+                                        InteractionResponseDataBuilder::new()
+                                            .content(
+                                                "Successfully changed the message channel"
+                                                    .to_string(),
+                                            )
+                                            .components(admin_view.components())
+                                            .build(),
+                                    ),
+                                },
+                            )
+                            .exec()
+                            .await?;
+
+                        debug!(res = %format!("{:#?}", update_message_res));
                     }
                 }
-            }
+                _ => {
+                    warn!(arg = %args[1], "Unhandled argument found during \"change\" operation");
+                }
+            },
             _ => {
                 warn!(component_id, "Unknown component_id found");
             }
@@ -621,7 +716,7 @@ impl AdminCommandHandler {
         let message = InteractionResponse {
             kind: InteractionResponseType::ChannelMessageWithSource,
             data: Some(
-                CallbackDataBuilder::new()
+                InteractionResponseDataBuilder::new()
                     .flags(MessageFlags::EPHEMERAL)
                     .components(vec![Component::ActionRow(ActionRow {
                         components: vec![Component::SelectMenu(SelectMenu {

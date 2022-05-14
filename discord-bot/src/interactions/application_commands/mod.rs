@@ -69,6 +69,7 @@ impl ApplicationCommandHandlers {
 
         debug!(name = %command_name, id = %command_id, "Handling application command");
 
+        // TODO: Don't hardcode this, have each command registered to this struct at runtime
         match command_name {
             "ping" => {
                 // Respond with `Pong` with an ephemeral message and the current ping in ms

@@ -3,9 +3,10 @@ use twilight_model::{
         button::ButtonStyle, select_menu::SelectMenuOption, ActionRow, Button, Component,
         SelectMenu,
     },
-    channel::{message::MessageFlags, Channel},
+    channel::{embed::Embed, message::MessageFlags, Channel},
     id::{marker::GuildMarker, Id},
 };
+use twilight_util::builder::embed::*;
 use twilight_util::builder::{embed::EmbedBuilder, InteractionResponseDataBuilder};
 
 pub struct AdminViewAllPanel<'a> {
@@ -144,7 +145,7 @@ impl<'a> AdminViewSinglePanel<'a> {
             }),
             Component::ActionRow(ActionRow {
                 components: vec![Component::SelectMenu(SelectMenu {
-                    custom_id: "admin:mm:panels:change:channel".into(),
+                    custom_id: format!("{}:{}", "admin:mm:panels:change:channel", self.panel.panel_id),
                     disabled: false,
                     max_values: Some(1),
                     min_values: Some(1),
@@ -184,7 +185,11 @@ impl<'a> AdminViewSinglePanel<'a> {
                         url: None,
                     }),
                     Component::Button(Button {
-                        custom_id: Some(format!("{}:{}", "admin:mm:panels:delete", self.panel.panel_id.to_string())),
+                        custom_id: Some(format!(
+                            "{}:{}",
+                            "admin:mm:panels:delete",
+                            self.panel.panel_id.to_string()
+                        )),
                         disabled: false,
                         emoji: None,
                         label: Some("Delete Panel".into()),
@@ -194,5 +199,41 @@ impl<'a> AdminViewSinglePanel<'a> {
                 ],
             }),
         ]
+    }
+}
+
+pub struct MatchmakingPanel<'a> {
+    pub model: &'a entity::matchmaking::panel::Model,
+}
+
+impl<'a> MatchmakingPanel<'a> {
+    pub fn create(&self) -> InteractionResponseDataBuilder {
+        todo!()
+    }
+
+    pub fn components(&self) -> Vec<Component> {
+        vec![Component::ActionRow(ActionRow { components: vec![] })]
+    }
+
+    pub fn embed(&self) -> Embed {
+        let mut builder = EmbedBuilder::new();
+
+        builder = builder.author(EmbedAuthorBuilder::new("Runback".to_string()).build());
+
+        builder = builder.title(
+            self.model
+                .game
+                .clone()
+                .unwrap_or("Unnamed Matchmaking Panel".to_string()),
+        );
+
+        builder = builder.description(
+            self.model
+                .comment
+                .clone()
+                .unwrap_or("Start matchmaking with other players!".to_string()),
+        );
+
+        return builder.build();
     }
 }
