@@ -145,7 +145,10 @@ impl<'a> AdminViewSinglePanel<'a> {
             }),
             Component::ActionRow(ActionRow {
                 components: vec![Component::SelectMenu(SelectMenu {
-                    custom_id: format!("{}:{}", "admin:mm:panels:change:channel", self.panel.panel_id),
+                    custom_id: format!(
+                        "{}:{}",
+                        "admin:mm:panels:change:channel", self.panel.panel_id
+                    ),
                     disabled: false,
                     max_values: Some(1),
                     min_values: Some(1),
@@ -204,15 +207,51 @@ impl<'a> AdminViewSinglePanel<'a> {
 
 pub struct MatchmakingPanel<'a> {
     pub model: &'a entity::matchmaking::panel::Model,
+
+    /// This should be a reference to all the sessions in the guild
+    pub searching_for_matches: &'a [entity::matchmaking::active_session::Model],
 }
 
 impl<'a> MatchmakingPanel<'a> {
     pub fn create(&self) -> InteractionResponseDataBuilder {
-        todo!()
+        InteractionResponseDataBuilder::new()
+            .components(self.components())
+            .embeds([self.embed()])
     }
 
     pub fn components(&self) -> Vec<Component> {
-        vec![Component::ActionRow(ActionRow { components: vec![] })]
+        vec![
+            Component::ActionRow(ActionRow {
+                components: vec![
+                    Component::Button(Button {
+                        custom_id: Some("mm_panel:start".to_string()),
+                        disabled: true,
+                        emoji: None,
+                        label: Some("Start Matchmaking".to_string()),
+                        style: ButtonStyle::Primary,
+                        url: None,
+                    }),
+                    Component::Button(Button {
+                        custom_id: Some("mm_panel:stop".to_string()),
+                        disabled: true,
+                        emoji: None,
+                        label: Some("Stop Matchmaking".to_string()),
+                        style: ButtonStyle::Danger,
+                        url: None,
+                    }),
+                ],
+            }),
+            Component::ActionRow(ActionRow {
+                components: vec![Component::Button(Button {
+                    custom_id: Some("mm_panel:show_settings".to_string()),
+                    disabled: true,
+                    emoji: None,
+                    label: Some("Edit your preferences".to_string()),
+                    style: ButtonStyle::Primary,
+                    url: None,
+                })],
+            }),
+        ]
     }
 
     pub fn embed(&self) -> Embed {
