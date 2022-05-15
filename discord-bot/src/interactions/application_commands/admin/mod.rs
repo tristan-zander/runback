@@ -584,7 +584,10 @@ impl AdminCommandHandler {
                         // TODO: Repost the message in the correct spot
                     } else {
                         // Post the mm panel to that channel
-                        let panel = MatchmakingPanel { model: &res };
+                        let panel = MatchmakingPanel {
+                            model: &res,
+                            searching_for_matches: todo!(),
+                        };
 
                         let data = panel.components();
 
