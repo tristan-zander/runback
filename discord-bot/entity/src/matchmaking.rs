@@ -1,7 +1,7 @@
 use sea_orm::entity::prelude::*;
 
-pub use lobby::{Entity as Lobby, Model as LobbyModel};
 pub use lfg::Entity as LookingForGames;
+pub use lobby::{Entity as Lobby, Model as LobbyModel};
 pub use panel::Entity as Panel;
 pub use settings::Entity as Setting;
 

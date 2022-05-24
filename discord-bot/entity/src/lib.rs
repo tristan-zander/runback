@@ -7,7 +7,7 @@ use sea_orm::{
     sea_query::{Nullable, ValueType, ValueTypeErr},
     DbErr, TryGetable,
 };
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use twilight_model::id::Id;
 
 pub mod discord_user;

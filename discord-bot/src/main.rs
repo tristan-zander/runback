@@ -103,11 +103,11 @@ async fn main() -> Result<()> {
         };
 
         match event {
-            Event::Ready(_) =>  {
+            Event::Ready(_) => {
                 // Do some intital checks
                 // Check to see if all of the panels related to this shard are healthy
                 info!("Bot is ready!")
-            },
+            }
             Event::InteractionCreate(i) => {
                 let interaction_ref = interactions.clone();
                 tokio::spawn(async move {
