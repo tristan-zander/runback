@@ -209,7 +209,7 @@ pub struct MatchmakingPanel<'a> {
     pub model: &'a entity::matchmaking::panel::Model,
 
     /// This should be a reference to all the sessions in the guild
-    pub searching_for_matches: &'a [entity::matchmaking::active_session::Model],
+    pub searching_for_matches: &'a [entity::matchmaking::lobby::Model],
 }
 
 impl<'a> MatchmakingPanel<'a> {

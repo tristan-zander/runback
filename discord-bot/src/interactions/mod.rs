@@ -5,8 +5,10 @@ use std::sync::Arc;
 
 use entity::sea_orm::DatabaseConnection;
 
+use twilight_cache_inmemory::InMemoryCache;
 use twilight_gateway::Shard;
 use twilight_model::gateway::payload::incoming::InteractionCreate;
+use twilight_standby::Standby;
 
 use crate::error::RunbackError;
 
@@ -17,8 +19,12 @@ pub struct InteractionHandler {
 }
 
 impl InteractionHandler {
-    pub async fn init(db: Arc<Box<DatabaseConnection>>) -> Result<Self, RunbackError> {
-        let application_command_handlers = ApplicationCommandHandlers::new(db).await?;
+    pub async fn init(
+        db: Arc<Box<DatabaseConnection>>,
+        cache: Arc<InMemoryCache>,
+        standby: Arc<Standby>,
+    ) -> Result<Self, RunbackError> {
+        let application_command_handlers = ApplicationCommandHandlers::new(db, cache, standby).await?;
         application_command_handlers
             .utils
             .register_all_application_commands()
