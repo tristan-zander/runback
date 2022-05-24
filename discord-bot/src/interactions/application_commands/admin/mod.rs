@@ -635,6 +635,7 @@ impl AdminCommandHandler {
                         let panel = MatchmakingPanel {
                             model: &res,
                             lfg: todo!(),
+                            lobbies: todo!(),
                         };
 
                         let data = panel.components();
