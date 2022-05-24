@@ -443,8 +443,10 @@ impl AdminCommandHandler {
                             component,
                         ) => {
                             info!("Recieved message component interaction while awaiting standby.");
-                        },
-                        twilight_model::application::interaction::Interaction::ModalSubmit(modal) => {
+                        }
+                        twilight_model::application::interaction::Interaction::ModalSubmit(
+                            modal,
+                        ) => {
                             todo!()
                         }
                         _ => {}
@@ -632,7 +634,7 @@ impl AdminCommandHandler {
                         // Post the mm panel to that channel
                         let panel = MatchmakingPanel {
                             model: &res,
-                            searching_for_matches: todo!(),
+                            lfg: todo!(),
                         };
 
                         let data = panel.components();

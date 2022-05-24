@@ -1,6 +1,9 @@
 use std::{collections::HashMap, error::Error, str::FromStr};
 
-use common::{logging::{LogDriver, LogLevel}, config::{Logging, Storage, Events, Auth}};
+use common::{
+    config::{Auth, Events, Logging, Storage},
+    logging::{LogDriver, LogLevel},
+};
 use figment::{
     providers::{Env, Format, Serialized, Toml},
     Figment, Profile,

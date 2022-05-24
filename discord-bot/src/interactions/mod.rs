@@ -24,7 +24,8 @@ impl InteractionHandler {
         cache: Arc<InMemoryCache>,
         standby: Arc<Standby>,
     ) -> Result<Self, RunbackError> {
-        let application_command_handlers = ApplicationCommandHandlers::new(db, cache, standby).await?;
+        let application_command_handlers =
+            ApplicationCommandHandlers::new(db, cache, standby).await?;
         application_command_handlers
             .utils
             .register_all_application_commands()
