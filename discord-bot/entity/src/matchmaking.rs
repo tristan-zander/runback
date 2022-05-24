@@ -1,14 +1,16 @@
 use sea_orm::entity::prelude::*;
 
-pub use active_session::Entity as ActiveSession;
+pub use lobby::{Entity as Lobby, Model as LobbyModel};
+pub use lfg::Entity as LookingForGames;
 pub use panel::Entity as Panel;
 pub use settings::Entity as Setting;
 
-pub mod active_session {
+/// Lobbies are sessions that users join to play matches. This could be open, closed, 1v1, team based, ffa, etc.
+pub mod lobby {
     use super::*;
 
     #[derive(Clone, Debug, PartialEq, DeriveEntityModel, DeriveActiveModelBehavior)]
-    #[sea_orm(table_name = "matchmaking_sessions")]
+    #[sea_orm(table_name = "matchmaking_lobbies")]
     pub struct Model {
         #[sea_orm(primary_key)]
         // TODO: Change to UUID
@@ -24,10 +26,43 @@ pub mod active_session {
 
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
     pub enum Relation {
+        /// The current users that have entered the lobby
         #[sea_orm(has_many = "crate::discord_user::user::Entity")]
         User,
         // #[sea_orm(has_one)]
         // GameMetadata
+    }
+
+    impl Related<crate::discord_user::user::Entity> for Entity {
+        fn to() -> RelationDef {
+            Relation::User.def()
+        }
+    }
+}
+
+/// A User that's looking for a game in a certain category.
+pub mod lfg {
+    use twilight_model::id::marker::{GuildMarker, UserMarker};
+
+    use crate::IdWrapper;
+
+    use super::*;
+
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel, DeriveActiveModelBehavior)]
+    #[sea_orm(table_name = "matchmaking_lfg")]
+    pub struct Model {
+        #[sea_orm(primary_key)]
+        pub id: Uuid,
+        pub guild_id: IdWrapper<GuildMarker>,
+        pub user_id: IdWrapper<UserMarker>,
+        pub started_at: DateTimeUtc,
+        pub timeout_after: DateTimeUtc,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {
+        #[sea_orm(has_one = "crate::discord_user::user::Entity")]
+        User,
     }
 
     impl Related<crate::discord_user::user::Entity> for Entity {
@@ -83,11 +118,11 @@ pub mod panel {
         pub message_id: Option<IdWrapper<MessageMarker>>,
         #[sea_orm(unique, nullable)]
         pub channel_id: Option<IdWrapper<ChannelMarker>>,
-        
+
         /// 80 Character Game Title
         #[sea_orm(nullable)]
         pub game: Option<String>,
-        
+
         /// 255 Character Game Title
         #[sea_orm(nullable)]
         pub comment: Option<String>,

@@ -7,6 +7,7 @@ use sea_orm::{
     sea_query::{Nullable, ValueType, ValueTypeErr},
     DbErr, TryGetable,
 };
+use serde::{Serialize, Deserialize};
 use twilight_model::id::Id;
 
 pub mod discord_user;
@@ -14,10 +15,11 @@ pub mod matchmaking;
 
 pub use sea_orm;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IdWrapper<T> {
     /// This field is translated into i64 through a memory transmute
     pub inner: NonZeroU64,
+    #[serde(skip)]
     data: PhantomData<T>,
 }
 

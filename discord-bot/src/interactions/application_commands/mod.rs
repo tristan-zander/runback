@@ -5,6 +5,7 @@ mod matchmaking;
 use std::sync::Arc;
 
 use entity::sea_orm::DatabaseConnection;
+use twilight_cache_inmemory::InMemoryCache;
 use twilight_http::Client as DiscordHttpClient;
 use twilight_model::{
     application::{
@@ -21,6 +22,7 @@ use twilight_model::{
         Id,
     },
 };
+use twilight_standby::Standby;
 use twilight_util::builder::command::{CommandBuilder, StringBuilder};
 use twilight_util::builder::embed::{EmbedBuilder, EmbedFieldBuilder};
 use twilight_util::builder::InteractionResponseDataBuilder;
@@ -37,6 +39,8 @@ pub struct ApplicationCommandUtilities {
     pub http_client: DiscordHttpClient,
     pub application_id: Id<ApplicationMarker>,
     pub db: Arc<Box<DatabaseConnection>>,
+    pub cache: Arc<InMemoryCache>,
+    pub standby: Arc<Standby>,
 }
 
 pub struct ApplicationCommandHandlers {
@@ -46,8 +50,12 @@ pub struct ApplicationCommandHandlers {
 }
 
 impl ApplicationCommandHandlers {
-    pub async fn new(db: Arc<Box<DatabaseConnection>>) -> Result<Self, RunbackError> {
-        let utilities = Arc::new(ApplicationCommandUtilities::new(db).await?);
+    pub async fn new(
+        db: Arc<Box<DatabaseConnection>>,
+        cache: Arc<InMemoryCache>,
+        standby: Arc<Standby>,
+    ) -> Result<Self, RunbackError> {
+        let utilities = Arc::new(ApplicationCommandUtilities::new(db, cache, standby).await?);
         Ok(Self {
             utils: utilities.clone(),
             eula_command_handler: EULACommandHandler::new(utilities.clone()),
@@ -184,24 +192,37 @@ impl ApplicationCommandHandlers {
 }
 
 impl ApplicationCommandUtilities {
-    pub async fn new(db: Arc<Box<DatabaseConnection>>) -> Result<Self, RunbackError> {
+    pub async fn new(
+        db: Arc<Box<DatabaseConnection>>,
+        cache: Arc<InMemoryCache>,
+        standby: Arc<Standby>,
+    ) -> Result<Self, RunbackError> {
         let http_client = DiscordHttpClient::new(crate::CONFIG.token.clone());
         let application_id = {
             let response = http_client.current_user_application().exec().await?;
             response.model().await?.id
         };
 
-        Ok(Self::new_with_application_id(db, application_id))
+        Ok(Self::new_with_application_id(
+            db,
+            application_id,
+            cache,
+            standby,
+        ))
     }
 
     pub fn new_with_application_id(
         db: Arc<Box<DatabaseConnection>>,
         application_id: Id<ApplicationMarker>,
+        cache: Arc<InMemoryCache>,
+        standby: Arc<Standby>,
     ) -> Self {
         Self {
             db,
             http_client: DiscordHttpClient::new(crate::CONFIG.token.clone()),
             application_id,
+            cache,
+            standby,
         }
     }
 
@@ -239,12 +260,14 @@ impl ApplicationCommandUtilities {
         command: &DiscordApplicationCommand,
         message: &InteractionResponse,
     ) -> Result<(), RunbackError> {
-        let _res = self
+        let res = self
             .http_client
             .interaction(self.application_id)
             .create_response(command.id, command.token.as_str(), message)
             .exec()
             .await?;
+
+        debug!("Send Message response: {:#?}", res);
 
         Ok(())
     }

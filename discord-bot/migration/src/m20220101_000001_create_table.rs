@@ -19,27 +19,60 @@ impl MigrationTrait for Migration {
         manager
             .create_table(
                 sea_query::Table::create()
-                    .table(matchmaking::ActiveSession)
+                    .table(matchmaking::Lobby)
                     .if_not_exists()
                     .col(
-                        ColumnDef::new(matchmaking::active_session::Column::Id)
+                        ColumnDef::new(matchmaking::lobby::Column::Id)
                             .integer()
                             .not_null()
                             .primary_key()
                             .auto_increment(),
                     )
                     .col(
-                        ColumnDef::new(matchmaking::active_session::Column::StartedAt)
+                        ColumnDef::new(matchmaking::lobby::Column::StartedAt)
                             .timestamp_with_time_zone()
                             .not_null(),
                     )
                     .col(
-                        ColumnDef::new(matchmaking::active_session::Column::TimeoutAfter)
+                        ColumnDef::new(matchmaking::lobby::Column::TimeoutAfter)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .col(ColumnDef::new(matchmaking::lobby::Column::ThreadId).big_integer())
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_table(
+                sea_query::Table::create()
+                    .table(matchmaking::LookingForGames)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(matchmaking::lfg::Column::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(matchmaking::lfg::Column::GuildId)
+                            .big_integer()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(matchmaking::lfg::Column::UserId)
+                            .big_integer()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(matchmaking::lfg::Column::StartedAt)
                             .timestamp_with_time_zone()
                             .not_null(),
                     )
                     .col(
-                        ColumnDef::new(matchmaking::active_session::Column::ThreadId).big_integer(),
+                        ColumnDef::new(matchmaking::lfg::Column::TimeoutAfter)
+                            .timestamp_with_time_zone()
+                            .not_null(),
                     )
                     .to_owned(),
             )
@@ -69,7 +102,7 @@ impl MigrationTrait for Migration {
                     .col(
                         ColumnDef::new(matchmaking::panel::Column::MessageId)
                             .big_integer()
-                            .unique_key()
+                            .unique_key(),
                     )
                     .col(ColumnDef::new(matchmaking::panel::Column::Game).string_len(80))
                     .col(ColumnDef::new(matchmaking::panel::Column::Comment).string_len(255))
@@ -130,9 +163,13 @@ impl MigrationTrait for Migration {
         manager
             .drop_table(
                 sea_query::Table::drop()
-                    .table(matchmaking::ActiveSession)
+                    .table(matchmaking::Lobby)
                     .to_owned(),
             )
+            .await?;
+
+        manager
+            .drop_table(Table::drop().table(matchmaking::LookingForGames).to_owned())
             .await?;
 
         manager

@@ -12,6 +12,7 @@ use futures::stream::StreamExt;
 use std::sync::Arc;
 use twilight_cache_inmemory::{InMemoryCache, ResourceType};
 use twilight_gateway::{cluster::ShardScheme, Cluster, Intents};
+use twilight_standby::Standby;
 
 use twilight_model::gateway::event::Event;
 
@@ -43,9 +44,24 @@ async fn main() -> Result<()> {
         .map_err(|e| anyhow!("Could not connect to database: {}", e))?;
     info!("Successfully connected to database.");
 
-    let interactions = Arc::new(InteractionHandler::init(db.clone()).await.map_err(
-        |e| -> anyhow::Error { anyhow!("Could not create interaction command handler: {}", e) },
-    )?); // Register guild commands
+    let cache = Arc::new(
+        InMemoryCache::builder()
+            .resource_types(ResourceType::MESSAGE)
+            .resource_types(ResourceType::CHANNEL)
+            .resource_types(ResourceType::MEMBER)
+            .resource_types(ResourceType::USER)
+            .build(),
+    );
+
+    let standby = Arc::new(Standby::new());
+
+    let interactions = Arc::new(
+        InteractionHandler::init(db.clone(), cache.clone(), standby.clone())
+            .await
+            .map_err(|e| -> anyhow::Error {
+                anyhow!("Could not create interaction command handler: {}", e)
+            })?,
+    ); // Register guild commands
     info!("Registered guild commands");
 
     // This is the default scheme. It will automatically create as many
@@ -67,21 +83,13 @@ async fn main() -> Result<()> {
         cluster_spawn.up().await;
     });
 
-    // Since we only care about new messages, make the cache only
-    // cache new messages.
-    let cache = InMemoryCache::builder()
-        .resource_types(ResourceType::MESSAGE)
-        .resource_types(ResourceType::CHANNEL)
-        .resource_types(ResourceType::MEMBER)
-        .resource_types(ResourceType::USER)
-        .build();
-
     // Process each event as they come in.
     while let Some((shard_id, event)) = events.next().await {
         let cluster_ref = cluster.clone();
 
         // Update the cache with the event.
         cache.update(&event);
+        standby.process(&event);
 
         trace!(ev = %format!("{:?}", event), "Received Discord event");
 

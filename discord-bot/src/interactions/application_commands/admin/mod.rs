@@ -8,6 +8,8 @@ use entity::{
     },
     IdWrapper,
 };
+use futures::StreamExt;
+use twilight_gateway::Event;
 use twilight_model::{
     application::{
         command::{Command, CommandType},
@@ -21,6 +23,7 @@ use twilight_model::{
         },
     },
     channel::{message::MessageFlags, Channel, ChannelType},
+    gateway::payload::incoming::InteractionCreate,
     http::interaction::{InteractionResponse, InteractionResponseType},
     id::{
         marker::{ChannelMarker, GuildMarker},
@@ -410,6 +413,49 @@ impl AdminCommandHandler {
         };
 
         self.utils.send_message(command, &message).await?;
+
+        let token = command.token.clone();
+        let mut events = self
+            .utils
+            .standby
+            .wait_for_stream(guild_id, move |e: &Event| -> bool {
+                debug!("Standby event: {:#?}", e);
+                match e {
+                    twilight_gateway::Event::InteractionCreate(interaction) => match &interaction.0
+                    {
+                        twilight_model::application::interaction::Interaction::MessageComponent(
+                            comp,
+                        ) => comp.token == token,
+                        twilight_model::application::interaction::Interaction::ModalSubmit(
+                            modal,
+                        ) => modal.token == token,
+                        _ => false,
+                    },
+                    _ => false,
+                }
+            });
+
+        while let Some(ev) = events.next().await {
+            match ev {
+                Event::InteractionCreate(interaction) => {
+                    match &interaction.0 {
+                        twilight_model::application::interaction::Interaction::MessageComponent(
+                            component,
+                        ) => {
+                            info!("Recieved message component interaction while awaiting standby.");
+                        },
+                        twilight_model::application::interaction::Interaction::ModalSubmit(modal) => {
+                            todo!()
+                        }
+                        _ => {}
+                    }
+                    // self.on_message_component_event(id_parts, component);
+                }
+                _ => {}
+            }
+        }
+
+        info!("Finished handling mm_panels event");
 
         Ok(())
     }
