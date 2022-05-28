@@ -4,6 +4,8 @@ extern crate tracing;
 extern crate lazy_static;
 #[macro_use]
 extern crate anyhow;
+#[macro_use]
+extern crate async_trait;
 
 use config::Config;
 use entity::sea_orm::{ConnectOptions, Database, DatabaseConnection};
