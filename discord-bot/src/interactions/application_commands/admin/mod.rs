@@ -41,7 +41,7 @@ use crate::{
     RunbackError,
 };
 
-use super::{ApplicationCommand, ApplicationCommandUtilities};
+use super::{ApplicationCommandHandler, ApplicationCommandUtilities};
 
 #[derive(Debug)]
 struct AdminCommandHandlerError {
@@ -56,12 +56,17 @@ impl std::fmt::Display for AdminCommandHandlerError {
 
 impl Error for AdminCommandHandlerError {}
 
-pub(super) struct AdminCommandHandler {
+pub struct AdminCommandHandler {
     pub utils: Arc<ApplicationCommandUtilities>,
 }
 
-impl ApplicationCommand for AdminCommandHandler {
-    fn to_command(debug_guild: Option<Id<GuildMarker>>) -> Command {
+#[async_trait]
+impl ApplicationCommandHandler for AdminCommandHandler {
+    fn name(&self) -> String {
+        todo!()
+    }
+
+    fn register(&self) -> Option<Command> {
         let mut builder = CommandBuilder::new(
             "admin".into(),
             "Admin configuration and management settings".into(),
@@ -76,13 +81,35 @@ impl ApplicationCommand for AdminCommandHandler {
             "Shows the matchmaking settings panel".into(),
         ));
 
-        if let Some(id) = debug_guild {
-            builder = builder.guild_id(id);
-        }
-
         let comm = builder.build();
         debug!(command = %format!("{:?}", comm), "Created command!");
-        return comm;
+        return Some(comm);
+    }
+
+    async fn execute(&self, data: &super::InteractionData) -> anyhow::Result<()> {
+        let options = &data.command.data.options;
+
+        // There should only be one subcommand option, but map through them anyways
+        for option in options {
+            match option.name.as_str() {
+                "matchmaking-settings" => {
+                    self.send_matchamking_settings(data.command)
+                        .await
+                        .map_err(|e| anyhow!("Error with mm settings: {}", e))?;
+                }
+                "mm-panels" => {
+                    self.on_mm_panels_command_received(data.command)
+                        .await
+                        .map_err(|e| anyhow!("Error with mm panel: {}", e))?;
+                }
+                _ => {
+                    debug!(name = %option.name.as_str(), "Unknown admin subcommand option");
+                    return Err(anyhow!("Unknown admin subcommand option"));
+                }
+            }
+        }
+
+        Ok(())
     }
 }
 
@@ -91,30 +118,6 @@ impl AdminCommandHandler {
         Self {
             utils: command_utils,
         }
-    }
-
-    pub async fn on_command_called(
-        &self,
-        command: &DiscordApplicationCommand,
-    ) -> Result<(), RunbackError> {
-        let options = &command.data.options;
-
-        // There should only be one subcommand option, but map through them anyways
-        for option in options {
-            match option.name.as_str() {
-                "matchmaking-settings" => {
-                    self.send_matchamking_settings(command).await?;
-                }
-                "mm-panels" => {
-                    self.on_mm_panels_command_received(command).await?;
-                }
-                _ => {
-                    debug!(name = %option.name.as_str(), "Unknown admin subcommand option")
-                }
-            }
-        }
-
-        Ok(())
     }
 
     pub async fn on_message_component_event(

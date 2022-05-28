@@ -1,15 +1,15 @@
-mod admin;
-mod eula;
-mod matchmaking;
+pub mod admin;
+pub mod eula;
+pub mod matchmaking;
 
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use entity::sea_orm::DatabaseConnection;
 use twilight_cache_inmemory::InMemoryCache;
 use twilight_http::Client as DiscordHttpClient;
 use twilight_model::{
     application::{
-        command::{Command, CommandType},
+        command::{Command, CommandType, OptionsCommandOptionData},
         interaction::{
             modal::ModalSubmitInteraction, ApplicationCommand as DiscordApplicationCommand,
             MessageComponentInteraction,
@@ -27,11 +27,13 @@ use twilight_util::builder::command::{CommandBuilder, StringBuilder};
 use twilight_util::builder::embed::{EmbedBuilder, EmbedFieldBuilder};
 use twilight_util::builder::InteractionResponseDataBuilder;
 
+use twilight_model::application::interaction::ApplicationCommand;
+
 use crate::{
     error::RunbackError, interactions::application_commands::matchmaking::MatchmakingCommandHandler,
 };
 
-use self::{admin::AdminCommandHandler, eula::EULACommandHandler};
+use self::{admin::AdminCommandHandler, eula::EulaCommandHandler};
 
 /// Contains any helper functions to help make writing application command handlers easier
 // MAKE SURE THIS IS THREAD SAFE AND USABLE WITHOUT A MUTEX!!
@@ -45,8 +47,6 @@ pub struct ApplicationCommandUtilities {
 
 pub struct ApplicationCommandHandlers {
     pub utils: Arc<ApplicationCommandUtilities>,
-    eula_command_handler: EULACommandHandler,
-    admin_command_handler: AdminCommandHandler,
 }
 
 impl ApplicationCommandHandlers {
@@ -58,8 +58,6 @@ impl ApplicationCommandHandlers {
         let utilities = Arc::new(ApplicationCommandUtilities::new(db, cache, standby).await?);
         Ok(Self {
             utils: utilities.clone(),
-            eula_command_handler: EULACommandHandler::new(utilities.clone()),
-            admin_command_handler: AdminCommandHandler::new(utilities.clone()),
         })
     }
 
@@ -79,43 +77,9 @@ impl ApplicationCommandHandlers {
 
         // TODO: Don't hardcode this, have each command registered to this struct at runtime
         match command_name {
-            "ping" => {
-                // Respond with `Pong` with an ephemeral message and the current ping in ms
-
-                let message = InteractionResponse {
-                    data: Some(
-                        InteractionResponseDataBuilder::new()
-                            .embeds(vec![
-                                EmbedBuilder::new()
-                                    .color(0x55_4e_2b)
-                                    .description("Runback Matchmaking Bot")
-                                    .field(EmbedFieldBuilder::new("Ping?", "Pong!").build())
-                                    .build(), // .map_err(|e| RunbackError {
-                                              //     message: "Failed to build callback data".to_owned(),
-                                              //     inner: Some(e.into()),
-                                              // })?
-                            ])
-                            .flags(MessageFlags::EPHEMERAL)
-                            .build(),
-                    ),
-                    kind: InteractionResponseType::ChannelMessageWithSource,
-                };
-
-                let _res = self
-                    .utils
-                    .http_client
-                    .interaction(self.utils.application_id)
-                    .create_response(command.id, command.token.as_str(), &message)
-                    .exec()
-                    .await?;
-
-                debug!(message = %format!("{:?}", message), "Reponded to command \"Pong\"");
-
-                // self.client.message(command.channel_id, message_id);
-            }
             "eula" => {
                 // Send a message with the EULA as the message body (or a link to the website)
-                self.eula_command_handler.on_command_called(command).await?;
+                // self.eula_command_handler.on_command_called(command).await?;
             }
             "mm" => {
                 // Find the related matchmaking subcommand
@@ -128,9 +92,9 @@ impl ApplicationCommandHandlers {
             }
             "admin" => {
                 // Admin related settings
-                self.admin_command_handler
-                    .on_command_called(command)
-                    .await?;
+                // self.admin_command_handler
+                //     .on_command_called(command)
+                //     .await?;
             }
             _ => warn!(command_name = %command_name, "Unhandled application command"),
         }
@@ -152,9 +116,9 @@ impl ApplicationCommandHandlers {
 
         let _res = match namespace {
             "admin" => {
-                self.admin_command_handler
-                    .on_message_component_event(id_parts, message)
-                    .await?
+                // self.admin_command_handler
+                //     .on_message_component_event(id_parts, message)
+                //     .await?
             }
             _ => {
                 warn!(custom_id = %custom_id, "Unknown message component event")
@@ -178,9 +142,9 @@ impl ApplicationCommandHandlers {
 
         let _res = match namespace {
             "admin" => {
-                self.admin_command_handler
-                    .on_modal_submit(id_parts, modal)
-                    .await?
+                // self.admin_command_handler
+                //     .on_modal_submit(id_parts, modal)
+                //     .await?
             }
             _ => {
                 warn!(custom_id = %custom_id, "Unknown message component event")
@@ -230,31 +194,6 @@ impl ApplicationCommandUtilities {
         (*self.db).as_ref()
     }
 
-    pub async fn register_all_application_commands(&self) -> Result<(), RunbackError> {
-        let debug_guild = crate::CONFIG.debug_guild_id.clone();
-
-        let commands = vec![
-            PingCommandHander::to_command(debug_guild),
-            MatchmakingCommandHandler::to_command(debug_guild),
-            AdminCommandHandler::to_command(debug_guild),
-            EULACommandHandler::to_command(debug_guild),
-        ];
-
-        // TODO: In the future, only set as guild commands if we're not running in production mode or the debug_guild is not empty
-        let res = self
-            .http_client
-            .interaction(self.application_id)
-            .set_guild_commands(debug_guild.unwrap(), commands.as_slice())
-            .exec()
-            .await?
-            .models()
-            .await?;
-
-        debug!(commands = %format!("{:?}", res), "Successfully set guild commands");
-
-        Ok(())
-    }
-
     async fn send_message(
         &self,
         command: &DiscordApplicationCommand,
@@ -273,18 +212,34 @@ impl ApplicationCommandUtilities {
     }
 }
 
-// TODO: This should definitely be renamed to something else so it doesn't conflict with twilight_models
-pub trait ApplicationCommand {
-    /// Return the command in a form that can be registered by Discord through an http call.
-    fn to_command(debug_guild: Option<Id<GuildMarker>>) -> Command;
+#[async_trait]
+pub trait ApplicationCommandHandler {
+    fn name(&self) -> String;
+
+    fn register(&self) -> Option<Command> {
+        None
+    }
+
+    async fn execute(&self, data: &InteractionData) -> anyhow::Result<()>;
 }
 
-struct PingCommandHander;
+pub struct InteractionData<'a> {
+    pub command: &'a ApplicationCommand,
+}
 
-impl ApplicationCommand for PingCommandHander {
-    fn to_command(debug_guild: Option<Id<GuildMarker>>) -> Command {
+pub struct PingCommandHandler {
+    pub utils: Arc<ApplicationCommandUtilities>,
+}
+
+#[async_trait]
+impl ApplicationCommandHandler for PingCommandHandler {
+    fn name(&self) -> String {
+        "ping".into()
+    }
+
+    fn register(&self) -> Option<Command> {
         let mut builder = CommandBuilder::new(
-            "ping".into(),
+            self.name(),
             "Responds with pong".into(),
             CommandType::ChatInput,
         )
@@ -293,12 +248,41 @@ impl ApplicationCommand for PingCommandHander {
             "Send this text alongside the response".into(),
         ));
 
-        if let Some(id) = debug_guild {
-            builder = builder.guild_id(id);
-        }
-
         let comm = builder.build();
         debug!(comm = %format!("{:?}", comm), "Created command");
-        return comm;
+        return Some(comm);
+    }
+
+    async fn execute(&self, data: &InteractionData) -> anyhow::Result<()> {
+        let message = InteractionResponse {
+            data: Some(
+                InteractionResponseDataBuilder::new()
+                    .embeds(vec![
+                        EmbedBuilder::new()
+                            .color(0x55_4e_2b)
+                            .description("Runback Matchmaking Bot")
+                            .field(EmbedFieldBuilder::new("Ping?", "Pong!").build())
+                            .build(), // .map_err(|e| RunbackError {
+                                      //     message: "Failed to build callback data".to_owned(),
+                                      //     inner: Some(e.into()),
+                                      // })?
+                    ])
+                    .flags(MessageFlags::EPHEMERAL)
+                    .build(),
+            ),
+            kind: InteractionResponseType::ChannelMessageWithSource,
+        };
+
+        let _res = self
+            .utils
+            .http_client
+            .interaction(self.utils.application_id)
+            .create_response(data.command.id, data.command.token.as_str(), &message)
+            .exec()
+            .await?;
+
+        debug!(message = %format!("{:?}", message), "Reponded to command \"Pong\"");
+
+        Ok(())
     }
 }

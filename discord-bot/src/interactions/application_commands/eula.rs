@@ -4,7 +4,7 @@ use chrono::Utc;
 use entity::sea_orm::{ActiveModelTrait, EntityTrait, IntoActiveModel, Set};
 use twilight_model::{
     application::{
-        command::CommandType,
+        command::{Command, CommandType},
         interaction::application_command::{
             ApplicationCommand as DiscordApplicationCommand, CommandOptionValue,
         },
@@ -17,19 +17,18 @@ use twilight_util::builder::InteractionResponseDataBuilder as CallbackDataBuilde
 
 use crate::RunbackError;
 
-use super::{ApplicationCommand, ApplicationCommandUtilities};
+use super::{ApplicationCommandHandler, ApplicationCommandUtilities};
 
 // Consider getting this path from an environment variable
 const EULA: &'static str = include_str!("../../../../EULA.md");
 
-pub(super) struct EULACommandHandler {
+pub struct EulaCommandHandler {
     pub command_utils: Arc<ApplicationCommandUtilities>,
 }
 
-impl ApplicationCommand for EULACommandHandler {
-    fn to_command(
-        debug_guild: Option<twilight_model::id::Id<twilight_model::id::marker::GuildMarker>>,
-    ) -> twilight_model::application::command::Command {
+#[async_trait]
+impl ApplicationCommandHandler for EulaCommandHandler {
+    fn register(&self) -> Option<Command> {
         let mut builder = CommandBuilder::new(
             "eula".into(),
             "Show the EULA".into(),
@@ -44,25 +43,13 @@ impl ApplicationCommand for EULACommandHandler {
             ),
         );
 
-        if let Some(id) = debug_guild {
-            builder = builder.guild_id(id);
-        }
-
         let comm = builder.build();
         debug!(comm = %format!("{:?}", comm), "Created command");
-        return comm;
-    }
-}
-
-impl EULACommandHandler {
-    pub fn new(command_utils: Arc<ApplicationCommandUtilities>) -> Self {
-        Self { command_utils }
+        return Some(comm);
     }
 
-    pub async fn on_command_called(
-        &self,
-        command: &DiscordApplicationCommand,
-    ) -> Result<(), RunbackError> {
+    async fn execute(&self, data: &super::InteractionData) -> anyhow::Result<()> {
+        let command = data.command;
         debug!(options = %format!("{:?}", command.data.options));
 
         let gid = if let Some(gid) = command.guild_id {
@@ -77,7 +64,12 @@ impl EULACommandHandler {
                 ),
                 kind: InteractionResponseType::ChannelMessageWithSource,
             };
-            return self.command_utils.send_message(command, &message).await;
+            self.command_utils
+                .send_message(command, &message)
+                .await
+                .map_err(|e| anyhow!("Could not send message: {}", e))?;
+
+            return Ok(());
         };
 
         let options = &command.data.options;
@@ -94,7 +86,10 @@ impl EULACommandHandler {
                         ),
                             kind: InteractionResponseType::ChannelMessageWithSource,
                     };
-                        self.command_utils.send_message(command, &message).await?;
+                        self.command_utils
+                            .send_message(command, &message)
+                            .await
+                            .map_err(|e| anyhow!("Could not send message: {}", e))?;
 
                         error!(
                             accepted = %accepted.clone(),
@@ -122,7 +117,10 @@ impl EULACommandHandler {
                                     ),
                                     kind: InteractionResponseType::ChannelMessageWithSource,
                                 };
-                                self.command_utils.send_message(command, &message).await?;
+                                self.command_utils
+                                    .send_message(command, &message)
+                                    .await
+                                    .map_err(|e| anyhow!("Could not send message: {}", e))?;
                                 return Ok(());
                             } else {
                                 let mut active = existing_settings.into_active_model();
@@ -148,7 +146,10 @@ impl EULACommandHandler {
                                 .flags(MessageFlags::EPHEMERAL)
                                 .build(),
                         )};
-                    self.command_utils.send_message(command, &message).await?;
+                    self.command_utils
+                        .send_message(command, &message)
+                        .await
+                        .map_err(|e| anyhow!("Could not send message: {}", e))?;
                 }
                 _ => {}
             }
@@ -164,8 +165,21 @@ impl EULACommandHandler {
             ),
         };
 
-        self.command_utils.send_message(command, &message).await?;
+        self.command_utils
+            .send_message(command, &message)
+            .await
+            .map_err(|e| anyhow!("Could not send message: {}", e))?;
 
         Ok(())
+    }
+
+    fn name(&self) -> String {
+        "eula".into()
+    }
+}
+
+impl EulaCommandHandler {
+    pub fn new(command_utils: Arc<ApplicationCommandUtilities>) -> Self {
+        Self { command_utils }
     }
 }
