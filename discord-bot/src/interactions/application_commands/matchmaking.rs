@@ -4,14 +4,15 @@ use twilight_model::{
 };
 use twilight_util::builder::command::{CommandBuilder, SubCommandBuilder};
 
-use super::ApplicationCommand;
+use super::ApplicationCommandHandler;
 
-pub(super) struct MatchmakingCommandHandler;
+pub struct MatchmakingCommandHandler;
 
-impl ApplicationCommand for MatchmakingCommandHandler {
-    fn to_command(debug_guild: Option<Id<GuildMarker>>) -> Command {
+#[async_trait]
+impl ApplicationCommandHandler for MatchmakingCommandHandler {
+    fn register(&self) -> Option<Command> {
         let mut builder = CommandBuilder::new(
-            "mm".into(),
+            self.name(),
             "Matchmaking commands".into(),
             CommandType::ChatInput,
         )
@@ -34,12 +35,16 @@ impl ApplicationCommand for MatchmakingCommandHandler {
             .build(),
         );
 
-        if let Some(id) = debug_guild {
-            builder = builder.guild_id(id);
-        }
-
         let comm = builder.build();
         debug!(command = %format!("{:?}", comm), "Created command!");
-        return comm;
+        return Some(comm);
+    }
+
+    async fn execute(&self, data: &super::InteractionData) -> anyhow::Result<()> {
+        Err(anyhow!("Unimplemented"))
+    }
+
+    fn name(&self) -> String {
+        "mm".into()
     }
 }
