@@ -40,10 +40,10 @@ impl ApplicationCommandHandler for MatchmakingCommandHandler {
     }
 
     async fn execute(&self, data: &super::InteractionData) -> anyhow::Result<()> {
-        Err(anyhow!("Unimplemented"))
+        unimplemented!()
     }
 
     fn name(&self) -> String {
-        "mm".into()
+        "matchmaking".into()
     }
 }
