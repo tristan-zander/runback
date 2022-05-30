@@ -15,8 +15,8 @@ use twilight_standby::Standby;
 use crate::{error::RunbackError, interactions::application_commands::InteractionData};
 
 use self::application_commands::{
-    admin::AdminCommandHandler, eula::EulaCommandHandler, matchmaking::MatchmakingCommandHandler,
-    ApplicationCommandHandler, ApplicationCommandHandlers, PingCommandHandler,
+    eula::EulaCommandHandler, matchmaking::MatchmakingCommandHandler,
+    ApplicationCommandHandler, ApplicationCommandHandlers, PingCommandHandler, admin::admin_handler::AdminCommandHandler,
 };
 
 pub struct InteractionHandler {

@@ -11,7 +11,7 @@ pub struct MatchmakingCommandHandler;
 #[async_trait]
 impl ApplicationCommandHandler for MatchmakingCommandHandler {
     fn register(&self) -> Option<Command> {
-        let mut builder = CommandBuilder::new(
+        let builder = CommandBuilder::new(
             self.name(),
             "Matchmaking commands".into(),
             CommandType::ChatInput,

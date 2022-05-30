@@ -2,14 +2,14 @@ pub mod admin;
 pub mod eula;
 pub mod matchmaking;
 
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
 use entity::sea_orm::DatabaseConnection;
 use twilight_cache_inmemory::InMemoryCache;
 use twilight_http::Client as DiscordHttpClient;
 use twilight_model::{
     application::{
-        command::{Command, CommandType, OptionsCommandOptionData},
+        command::{Command, CommandType},
         interaction::{
             modal::ModalSubmitInteraction, ApplicationCommand as DiscordApplicationCommand,
             MessageComponentInteraction,
@@ -17,10 +17,7 @@ use twilight_model::{
     },
     channel::message::MessageFlags,
     http::interaction::{InteractionResponse, InteractionResponseType},
-    id::{
-        marker::{ApplicationMarker, GuildMarker},
-        Id,
-    },
+    id::{marker::ApplicationMarker, Id},
 };
 use twilight_standby::Standby;
 use twilight_util::builder::command::{CommandBuilder, StringBuilder};
@@ -29,11 +26,7 @@ use twilight_util::builder::InteractionResponseDataBuilder;
 
 use twilight_model::application::interaction::ApplicationCommand;
 
-use crate::{
-    error::RunbackError, interactions::application_commands::matchmaking::MatchmakingCommandHandler,
-};
-
-use self::{admin::AdminCommandHandler, eula::EulaCommandHandler};
+use crate::error::RunbackError;
 
 /// Contains any helper functions to help make writing application command handlers easier
 // MAKE SURE THIS IS THREAD SAFE AND USABLE WITHOUT A MUTEX!!
