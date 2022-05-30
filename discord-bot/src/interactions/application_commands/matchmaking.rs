@@ -4,13 +4,13 @@ use twilight_model::{
 };
 use twilight_util::builder::command::{CommandBuilder, SubCommandBuilder};
 
-use super::ApplicationCommandHandler;
+use super::{ApplicationCommandHandler, CommandHandlerType};
 
 pub struct MatchmakingCommandHandler;
 
 #[async_trait]
 impl ApplicationCommandHandler for MatchmakingCommandHandler {
-    fn register(&self) -> Option<Command> {
+    fn register(&self) -> CommandHandlerType {
         let builder = CommandBuilder::new(
             self.name(),
             "Matchmaking commands".into(),
@@ -36,8 +36,7 @@ impl ApplicationCommandHandler for MatchmakingCommandHandler {
         );
 
         let comm = builder.build();
-        debug!(command = %format!("{:?}", comm), "Created command!");
-        return Some(comm);
+        return CommandHandlerType::TopLevel(comm);
     }
 
     async fn execute(&self, data: &super::InteractionData) -> anyhow::Result<()> {

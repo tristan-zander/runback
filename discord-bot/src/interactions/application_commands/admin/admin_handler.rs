@@ -1,13 +1,7 @@
 use std::{collections::HashMap, error::Error, sync::Arc};
 
 use chrono::Utc;
-use entity::{
-    sea_orm::{
-        prelude::Uuid, ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter,
-        Set,
-    },
-    IdWrapper,
-};
+use entity::sea_orm::{prelude::Uuid, ActiveModelTrait, EntityTrait, IntoActiveModel, Set};
 use futures::StreamExt;
 use twilight_gateway::Event;
 use twilight_model::{
@@ -38,7 +32,7 @@ use twilight_util::builder::{
 
 use crate::{
     interactions::{
-        application_commands::InteractionData,
+        application_commands::{CommandHandlerType, InteractionData},
         panels::mm_panel::{AdminViewAllPanel, AdminViewSinglePanel, MatchmakingPanel},
     },
     RunbackError,
@@ -46,6 +40,10 @@ use crate::{
 
 use crate::interactions::application_commands::{
     ApplicationCommandHandler, ApplicationCommandUtilities,
+};
+
+use super::{
+    mm_panels_handler::MatchmakingPanelsHandler, mm_settings_handler::MatchmakingSettingsHandler,
 };
 
 pub struct AdminCommandHandler {
@@ -59,8 +57,8 @@ impl ApplicationCommandHandler for AdminCommandHandler {
         todo!()
     }
 
-    fn register(&self) -> Option<Command> {
-        let mut builder = CommandBuilder::new(
+    fn register(&self) -> CommandHandlerType {
+        let builder = CommandBuilder::new(
             "admin".into(),
             "Admin configuration and management settings".into(),
             CommandType::ChatInput,
@@ -75,32 +73,49 @@ impl ApplicationCommandHandler for AdminCommandHandler {
         ));
 
         let comm = builder.build();
-        debug!(command = %format!("{:?}", comm), "Created command!");
-        return Some(comm);
+        return CommandHandlerType::TopLevel(comm);
     }
 
     async fn execute(&self, data: &InteractionData) -> anyhow::Result<()> {
         let options = &data.command.data.options;
 
-        // There should only be one subcommand option, but map through them anyways
-        for option in options {
-            match option.name.as_str() {
-                "matchmaking-settings" => {
-                    self.send_matchamking_settings(data.command)
-                        .await
-                        .map_err(|e| anyhow!("Error with mm settings: {}", e))?;
-                }
-                "matchmaking-panels" => {
-                    self.on_mm_panels_command_received(data.command)
-                        .await
-                        .map_err(|e| anyhow!("Error with mm panel: {}", e))?;
-                }
-                _ => {
-                    debug!(name = %option.name.as_str(), "Unknown admin subcommand option");
-                    return Err(anyhow!("Unknown admin subcommand option"));
-                }
+        if options.len() != 1 {
+            return Err(anyhow!("Expected extra options when calling the top-level admin command handler. Number of arguments found: {}", options.len()));
+        }
+
+        let option = &options[0];
+
+        match self.sub_commands.get(&option.name) {
+            Some(ref c) => {
+                c.execute(data).await?;
+            }
+            _ => {
+                return Err(anyhow!(
+                    "No subcommand found with the name {}",
+                    &option.name
+                ))
             }
         }
+
+        // There should only be one subcommand option, but map through them anyways
+        // for option in options {
+        //     match option.name.as_str() {
+        //         "matchmaking-settings" => {
+        //             self.send_matchamking_settings(data.command)
+        //                 .await
+        //                 .map_err(|e| anyhow!("Error with mm settings: {}", e))?;
+        //         }
+        //         "matchmaking-panels" => {
+        //             self.on_mm_panels_command_received(data.command)
+        //                 .await
+        //                 .map_err(|e| anyhow!("Error with mm panel: {}", e))?;
+        //         }
+        //         _ => {
+        //             debug!(name = %option.name.as_str(), "Unknown admin subcommand option");
+        //             return Err(anyhow!("Unknown admin subcommand option"));
+        //         }
+        //     }
+        // }
 
         Ok(())
     }
@@ -108,10 +123,29 @@ impl ApplicationCommandHandler for AdminCommandHandler {
 
 impl AdminCommandHandler {
     pub fn new(command_utils: Arc<ApplicationCommandUtilities>) -> Self {
-        Self {
+        let mut admin_handler = Self {
             utils: command_utils,
             sub_commands: HashMap::new(),
+        };
+
+        let sub_handlers: Vec<Box<dyn ApplicationCommandHandler + Send + Sync + 'static>> = vec![
+            Box::new(MatchmakingSettingsHandler {
+                utils: admin_handler.utils.clone(),
+            }),
+            Box::new(MatchmakingPanelsHandler {
+                utils: admin_handler.utils.clone(),
+            }),
+        ];
+
+        for handler in sub_handlers {
+            if let CommandHandlerType::SubCommand = handler.register() {
+                let name = handler.name();
+                admin_handler.sub_commands.insert(name.clone(), handler);
+                debug!(name = %name, "Registered admin sub-command handler");
+            }
         }
+
+        admin_handler
     }
 
     pub async fn on_message_component_event(
@@ -350,111 +384,6 @@ impl AdminCommandHandler {
             // .(component.id, component.token.as_str(), &message)
             .exec()
             .await?;
-
-        Ok(())
-    }
-
-    /// Called whenever `/admin mm-panels` is called by an admin user.
-    #[tracing::instrument(skip_all)]
-    async fn on_mm_panels_command_received(
-        &self,
-        command: &DiscordApplicationCommand,
-    ) -> Result<(), RunbackError> {
-        let guild_id = match command.guild_id {
-            Some(id) => id,
-            None => {
-                return Err("Can't find a guild id for this command.".into());
-            }
-        };
-
-        let channels = self
-            .utils
-            .http_client
-            .guild_channels(guild_id)
-            .exec()
-            .await?
-            .models()
-            .await?;
-
-        let text_channels = channels
-            .into_iter()
-            .filter_map(|c| {
-                let val = if let ChannelType::GuildText = c.kind {
-                    Some(c)
-                } else {
-                    None
-                };
-                val
-            })
-            .collect::<Vec<Channel>>();
-
-        let panels = entity::matchmaking::Panel::find()
-            .filter(
-                entity::matchmaking::panel::Column::GuildId
-                    .eq(Into::<IdWrapper<GuildMarker>>::into(guild_id)),
-            )
-            .all(self.utils.db_ref())
-            .await?;
-
-        let panel = AdminViewAllPanel {
-            guild_id,
-            text_channels: text_channels.as_slice(),
-            panels: panels.as_slice(),
-        };
-
-        let callback_data = panel.create();
-
-        let message = InteractionResponse {
-            kind: InteractionResponseType::ChannelMessageWithSource,
-            data: Some(callback_data.build()),
-        };
-
-        self.utils.send_message(command, &message).await?;
-
-        let token = command.token.clone();
-        let mut events = self
-            .utils
-            .standby
-            .wait_for_stream(guild_id, move |e: &Event| -> bool {
-                debug!("Standby event: {:#?}", e);
-                match e {
-                    twilight_gateway::Event::InteractionCreate(interaction) => match &interaction.0
-                    {
-                        twilight_model::application::interaction::Interaction::MessageComponent(
-                            comp,
-                        ) => comp.token == token,
-                        twilight_model::application::interaction::Interaction::ModalSubmit(
-                            modal,
-                        ) => modal.token == token,
-                        _ => false,
-                    },
-                    _ => false,
-                }
-            });
-
-        while let Some(ev) = events.next().await {
-            match ev {
-                Event::InteractionCreate(interaction) => {
-                    match &interaction.0 {
-                        twilight_model::application::interaction::Interaction::MessageComponent(
-                            component,
-                        ) => {
-                            info!("Recieved message component interaction while awaiting standby.");
-                        }
-                        twilight_model::application::interaction::Interaction::ModalSubmit(
-                            modal,
-                        ) => {
-                            todo!()
-                        }
-                        _ => {}
-                    }
-                    // self.on_message_component_event(id_parts, component);
-                }
-                _ => {}
-            }
-        }
-
-        info!("Finished handling mm_panels event");
 
         Ok(())
     }
@@ -727,77 +656,4 @@ impl AdminCommandHandler {
     ) -> Result<(), RunbackError> {
         Ok(())
     }
-
-    async fn send_matchamking_settings(
-        &self,
-        command: &DiscordApplicationCommand,
-    ) -> Result<(), RunbackError> {
-        // VERIFY: Is it possible that we can send the information of other guilds here?
-        let guild_id = match command.guild_id {
-            Some(id) => id,
-            None => {
-                return Err("Can't find a guild id for this command.".into());
-            }
-        };
-
-        let channels = self
-            .utils
-            .http_client
-            .guild_channels(guild_id)
-            .exec()
-            .await?
-            .models()
-            .await?;
-
-        let text_channels = channels
-            .iter()
-            .filter_map(|c| {
-                let val = match c.kind {
-                    ChannelType::GuildText => Some(c),
-                    _ => None,
-                };
-                val
-            })
-            .collect::<Vec<&Channel>>();
-
-        debug!(channels = %format!("{:?}", text_channels), "Collected text channels");
-
-        let message = InteractionResponse {
-            kind: InteractionResponseType::ChannelMessageWithSource,
-            data: Some(
-                InteractionResponseDataBuilder::new()
-                    .flags(MessageFlags::EPHEMERAL)
-                    .components(vec![Component::ActionRow(ActionRow {
-                        components: vec![Component::SelectMenu(SelectMenu {
-                            custom_id: "admin:mm:channel".into(),
-                            disabled: false,
-                            max_values: Some(1),
-                            min_values: Some(1),
-                            options: text_channels
-                                .iter()
-                                .map(|chan| SelectMenuOption {
-                                    default: false,
-                                    description: None,
-                                    emoji: None,
-                                    label: format!(
-                                        "#{}",
-                                        chan.name
-                                            .as_ref()
-                                            .expect("Guild text channel did not have a name")
-                                            .as_str()
-                                    ),
-                                    value: chan.id.to_string(),
-                                })
-                                .collect::<Vec<SelectMenuOption>>(),
-                            placeholder: Some("Select the default matchmaking channel".into()),
-                        })],
-                    })])
-                    .build(),
-            ),
-        };
-
-        Ok(self.utils.send_message(command, &message).await?)
-    }
-
-    // pub async fn handle_matchmaking_settings_changed() {}
 }

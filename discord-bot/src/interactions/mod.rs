@@ -5,6 +5,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use entity::sea_orm::DatabaseConnection;
 
+use tracing::Level;
 use twilight_cache_inmemory::InMemoryCache;
 use twilight_gateway::Shard;
 use twilight_model::{
@@ -15,8 +16,9 @@ use twilight_standby::Standby;
 use crate::{error::RunbackError, interactions::application_commands::InteractionData};
 
 use self::application_commands::{
-    eula::EulaCommandHandler, matchmaking::MatchmakingCommandHandler,
-    ApplicationCommandHandler, ApplicationCommandHandlers, PingCommandHandler, admin::admin_handler::AdminCommandHandler,
+    admin::admin_handler::AdminCommandHandler, eula::EulaCommandHandler,
+    matchmaking::MatchmakingCommandHandler, ApplicationCommandHandler, ApplicationCommandHandlers,
+    CommandHandlerType, PingCommandHandler,
 };
 
 pub struct InteractionHandler {
@@ -40,6 +42,8 @@ impl InteractionHandler {
             command_map: HashMap::new(),
         };
 
+        event!(Level::INFO, "Registering top-level command handlers");
+
         let top_level_handlers: Vec<Box<dyn ApplicationCommandHandler + Send + Sync>> = vec![
             Box::new(PingCommandHandler {
                 utils: new.application_command_handlers.utils.clone(),
@@ -56,16 +60,18 @@ impl InteractionHandler {
         let mut command_models = Vec::new();
 
         for handler in top_level_handlers {
-            if let Some(ref mut c) = handler.register() {
+            if let CommandHandlerType::TopLevel(ref mut c) = handler.register() {
                 c.guild_id = crate::CONFIG.debug_guild_id;
 
                 command_models.push(c.to_owned());
 
                 new.command_map.insert(c.name.to_owned(), handler);
+
+                debug!(name = %c.name, "Registered application command handler");
             }
         }
 
-        let res = new
+        let _res = new
             .application_command_handlers
             .utils
             .http_client

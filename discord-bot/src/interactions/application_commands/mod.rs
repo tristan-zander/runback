@@ -9,7 +9,7 @@ use twilight_cache_inmemory::InMemoryCache;
 use twilight_http::Client as DiscordHttpClient;
 use twilight_model::{
     application::{
-        command::{Command, CommandType},
+        command::{Command, CommandType, OptionsCommandOptionData},
         interaction::{
             modal::ModalSubmitInteraction, ApplicationCommand as DiscordApplicationCommand,
             MessageComponentInteraction,
@@ -205,13 +205,17 @@ impl ApplicationCommandUtilities {
     }
 }
 
+#[non_exhaustive]
+pub enum CommandHandlerType {
+    TopLevel(Command),
+    SubCommand,
+}
+
 #[async_trait]
 pub trait ApplicationCommandHandler {
     fn name(&self) -> String;
 
-    fn register(&self) -> Option<Command> {
-        None
-    }
+    fn register(&self) -> CommandHandlerType;
 
     async fn execute(&self, data: &InteractionData) -> anyhow::Result<()>;
 }
@@ -230,7 +234,7 @@ impl ApplicationCommandHandler for PingCommandHandler {
         "ping".into()
     }
 
-    fn register(&self) -> Option<Command> {
+    fn register(&self) -> CommandHandlerType {
         let mut builder = CommandBuilder::new(
             self.name(),
             "Responds with pong".into(),
@@ -243,7 +247,7 @@ impl ApplicationCommandHandler for PingCommandHandler {
 
         let comm = builder.build();
         debug!(comm = %format!("{:?}", comm), "Created command");
-        return Some(comm);
+        return CommandHandlerType::TopLevel(comm);
     }
 
     async fn execute(&self, data: &InteractionData) -> anyhow::Result<()> {
