@@ -17,7 +17,7 @@ use twilight_util::builder::InteractionResponseDataBuilder as CallbackDataBuilde
 
 use crate::RunbackError;
 
-use super::{ApplicationCommandHandler, ApplicationCommandUtilities};
+use super::{ApplicationCommandHandler, ApplicationCommandUtilities, CommandHandlerType};
 
 // Consider getting this path from an environment variable
 const EULA: &'static str = include_str!("../../../../EULA.md");
@@ -28,7 +28,7 @@ pub struct EulaCommandHandler {
 
 #[async_trait]
 impl ApplicationCommandHandler for EulaCommandHandler {
-    fn register(&self) -> Option<Command> {
+    fn register(&self) -> CommandHandlerType {
         let mut builder = CommandBuilder::new(
             "eula".into(),
             "Show the EULA".into(),
@@ -44,8 +44,7 @@ impl ApplicationCommandHandler for EulaCommandHandler {
         );
 
         let comm = builder.build();
-        debug!(comm = %format!("{:?}", comm), "Created command");
-        return Some(comm);
+        return CommandHandlerType::TopLevel(comm);
     }
 
     async fn execute(&self, data: &super::InteractionData) -> anyhow::Result<()> {
