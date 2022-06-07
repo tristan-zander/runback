@@ -1,9 +1,9 @@
-use sea_schema::migration::{
-    sea_query::{self, *},
-    *,
-};
+use sea_orm_migration::{prelude::*, sea_query::extension::postgres::Type};
 
-use entity::{discord_user, matchmaking};
+use entity::{
+    discord_user,
+    matchmaking::{self, lobby::LobbyPrivacy},
+};
 
 pub struct Migration;
 
@@ -13,9 +13,23 @@ impl MigrationName for Migration {
     }
 }
 
+#[derive(Iden)]
+enum LobbyType {
+    LobbyPrivacy,
+}
+
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .create_type(
+                Type::create()
+                    .as_enum(LobbyType::LobbyPrivacy)
+                    .values([LobbyPrivacy::Open, LobbyPrivacy::InviteOnly])
+                    .to_owned(),
+            )
+            .await?;
+
         manager
             .create_table(
                 sea_query::Table::create()
@@ -23,10 +37,9 @@ impl MigrationTrait for Migration {
                     .if_not_exists()
                     .col(
                         ColumnDef::new(matchmaking::lobby::Column::Id)
-                            .integer()
+                            .uuid()
                             .not_null()
-                            .primary_key()
-                            .auto_increment(),
+                            .primary_key(),
                     )
                     .col(
                         ColumnDef::new(matchmaking::lobby::Column::StartedAt)
@@ -39,6 +52,17 @@ impl MigrationTrait for Migration {
                             .not_null(),
                     )
                     .col(ColumnDef::new(matchmaking::lobby::Column::ThreadId).big_integer())
+                    .col(ColumnDef::new(matchmaking::lobby::Column::Description).string_len(80))
+                    .col(
+                        ColumnDef::new(matchmaking::lobby::Column::Owner)
+                            .big_integer()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(matchmaking::lobby::Column::Privacy)
+                            .enumeration("lobby_privacy", ["Open", "InviteOnly"])
+                            .not_null(),
+                    )
                     .to_owned(),
             )
             .await?;
@@ -192,6 +216,15 @@ impl MigrationTrait for Migration {
             .drop_table(
                 sea_query::Table::drop()
                     .table(discord_user::User)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .drop_type(
+                Type::drop()
+                    .if_exists()
+                    .name(LobbyType::LobbyPrivacy)
                     .to_owned(),
             )
             .await?;

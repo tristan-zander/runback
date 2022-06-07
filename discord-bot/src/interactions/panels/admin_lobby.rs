@@ -9,13 +9,13 @@ use twilight_model::{
 use twilight_util::builder::embed::*;
 use twilight_util::builder::{embed::EmbedBuilder, InteractionResponseDataBuilder};
 
-pub struct AdminViewAllPanel<'a> {
+pub struct AdminLobbiesPanel<'a> {
     pub guild_id: Id<GuildMarker>,
     pub text_channels: &'a [Channel],
     pub panels: &'a [entity::matchmaking::panel::Model],
 }
 
-impl<'a> AdminViewAllPanel<'a> {
+impl<'a> AdminLobbiesPanel<'a> {
     pub fn create(&self) -> InteractionResponseDataBuilder {
         let embed = EmbedBuilder::new()
             .title("Admin Panel")
@@ -98,12 +98,12 @@ impl<'a> AdminViewAllPanel<'a> {
     }
 }
 
-pub struct AdminViewSinglePanel<'a> {
+pub struct AdminLobbiesSinglePanel<'a> {
     pub panel: &'a entity::matchmaking::panel::Model,
     pub text_channels: &'a [Channel],
 }
 
-impl<'a> AdminViewSinglePanel<'a> {
+impl<'a> AdminLobbiesSinglePanel<'a> {
     pub fn create(&self) -> InteractionResponseDataBuilder {
         let game = self.panel.game.clone();
         let desc = self.panel.comment.clone();

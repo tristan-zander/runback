@@ -33,7 +33,7 @@ use twilight_util::builder::{
 use crate::{
     interactions::{
         application_commands::{CommandHandlerType, InteractionData},
-        panels::mm_panel::{AdminViewAllPanel, AdminViewSinglePanel, MatchmakingPanel},
+        panels::admin_lobby::{AdminLobbiesPanel, AdminLobbiesSinglePanel, MatchmakingPanel},
     },
     RunbackError,
 };
@@ -299,7 +299,7 @@ impl AdminCommandHandler {
             })
             .collect::<Vec<Channel>>();
 
-        let panel_view = AdminViewSinglePanel {
+        let panel_view = AdminLobbiesSinglePanel {
             panel: &panel,
             text_channels: text_channels.as_slice(),
         };
@@ -487,7 +487,7 @@ impl AdminCommandHandler {
                     })
                     .collect::<Vec<Channel>>();
 
-                let panel_view = AdminViewSinglePanel {
+                let panel_view = AdminLobbiesSinglePanel {
                     panel: &panel,
                     text_channels: text_channels.as_slice(),
                 };
@@ -607,7 +607,7 @@ impl AdminCommandHandler {
                             })
                             .collect::<Vec<Channel>>();
 
-                        let admin_view = AdminViewSinglePanel {
+                        let admin_view = AdminLobbiesSinglePanel {
                             panel: &final_model,
                             text_channels: text_channels.as_slice(),
                         };

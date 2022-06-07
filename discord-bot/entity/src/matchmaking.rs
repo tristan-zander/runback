@@ -1,5 +1,7 @@
 use sea_orm::entity::prelude::*;
 
+use sea_orm::sea_query;
+
 pub use lfg::Entity as LookingForGames;
 pub use lobby::{Entity as Lobby, Model as LobbyModel};
 pub use panel::Entity as Panel;
@@ -7,21 +9,40 @@ pub use settings::Entity as Setting;
 
 /// Lobbies are sessions that users join to play matches. This could be open, closed, 1v1, team based, ffa, etc.
 pub mod lobby {
+    use twilight_model::id::marker::{ChannelMarker, UserMarker};
+
+    use crate::IdWrapper;
+
     use super::*;
+
+    #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, EnumIter, DeriveActiveEnum, Iden)]
+    #[sea_orm(rs_type = "String", db_type = "Enum", enum_name = "lobby_privacy")]
+    pub enum LobbyPrivacy {
+        #[sea_orm(string_value = "Open")]
+        Open,
+        #[sea_orm(string_value = "InviteOnly")]
+        InviteOnly,
+    }
 
     #[derive(Clone, Debug, PartialEq, DeriveEntityModel, DeriveActiveModelBehavior)]
     #[sea_orm(table_name = "matchmaking_lobbies")]
     pub struct Model {
         #[sea_orm(primary_key)]
-        // TODO: Change to UUID
-        pub id: i32,
+        pub id: Uuid,
         pub started_at: DateTimeUtc,
         /// Usually set to 60 minutes after the match started, depending on whether the players need more time.
         /// The max value for this field is 3 hours
         pub timeout_after: DateTimeUtc,
         /// Sometimes, you may not want to start a thread with a match. That's up to either the admins or the user
-        pub thread_id: Option<i64>,
-        // pub game: Id for GameMetadata,
+        pub thread_id: Option<IdWrapper<ChannelMarker>>,
+        /// The privacy of the channel. Invite-Only lobbies will not be shown on the lobbies list
+        pub privacy: LobbyPrivacy,
+        /// The Discord member that "owns" the lobby
+        pub owner: IdWrapper<UserMarker>,
+        /// The message attached to the lobby.
+        /// Max length of 80
+        #[sea_orm(default_value = "No lobby description")]
+        pub description: String,
     }
 
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
