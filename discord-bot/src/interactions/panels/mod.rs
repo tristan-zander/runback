@@ -1,1 +1,2 @@
-pub mod mm_panel;
+pub mod admin_lobby;
+pub mod lobby;

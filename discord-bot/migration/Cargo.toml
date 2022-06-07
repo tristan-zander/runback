@@ -9,5 +9,7 @@ name = "migration"
 path = "src/lib.rs"
 
 [dependencies]
-sea-schema = { version = "0.5.1", default-features = false, features = [ "migration", "debug-print" ] }
+tokio = { version = "1.19.2", features = ["full"] }
+sea-orm-migration = { version = "0.8.3", features = [ "sqlx-postgres", "runtime-tokio-rustls" ] }
+async-trait = "0.1.56"
 entity = { path = "../entity" }

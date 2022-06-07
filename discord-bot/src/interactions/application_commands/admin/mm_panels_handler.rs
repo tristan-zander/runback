@@ -16,7 +16,7 @@ use crate::interactions::{
     application_commands::{
         ApplicationCommandHandler, ApplicationCommandUtilities, CommandHandlerType, InteractionData,
     },
-    panels::mm_panel::AdminViewAllPanel,
+    panels::admin_lobby::AdminLobbiesPanel,
 };
 
 pub struct MatchmakingPanelsHandler {
@@ -71,7 +71,7 @@ impl ApplicationCommandHandler for MatchmakingPanelsHandler {
             .all(self.utils.db_ref())
             .await?;
 
-        let panel = AdminViewAllPanel {
+        let panel = AdminLobbiesPanel {
             guild_id,
             text_channels: text_channels.as_slice(),
             panels: panels.as_slice(),
