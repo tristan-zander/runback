@@ -13,7 +13,10 @@ use twilight_model::{
 };
 use twilight_standby::Standby;
 
-use crate::{error::RunbackError, interactions::application_commands::InteractionData};
+use crate::{
+    error::RunbackError,
+    interactions::application_commands::{lfg::LfgCommandHandler, InteractionData},
+};
 
 use self::application_commands::{
     admin::admin_handler::AdminCommandHandler, eula::EulaCommandHandler,
@@ -55,6 +58,9 @@ impl InteractionHandler {
             Box::new(EulaCommandHandler::new(
                 new.application_command_handlers.utils.clone(),
             )),
+            Box::new(LfgCommandHandler {
+                utils: new.application_command_handlers.utils.clone(),
+            }),
         ];
 
         let mut command_models = Vec::new();
