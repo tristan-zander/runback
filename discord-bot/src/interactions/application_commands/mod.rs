@@ -1,6 +1,7 @@
 pub mod admin;
 pub mod eula;
 pub mod matchmaking;
+pub mod lfg;
 
 use std::sync::Arc;
 
@@ -29,7 +30,7 @@ use twilight_model::application::interaction::ApplicationCommand;
 use crate::error::RunbackError;
 
 /// Contains any helper functions to help make writing application command handlers easier
-// MAKE SURE THIS IS THREAD SAFE AND USABLE WITHOUT A MUTEX!!
+/// Make sure this is thread safe
 pub struct ApplicationCommandUtilities {
     pub http_client: DiscordHttpClient,
     pub application_id: Id<ApplicationMarker>,
@@ -53,48 +54,7 @@ impl ApplicationCommandHandlers {
             utils: utilities.clone(),
         })
     }
-
-    pub async fn on_command_receive(
-        &self,
-        command: &DiscordApplicationCommand,
-    ) -> Result<(), RunbackError> {
-        // TODO: Assert that the guild has accepted the EULA
-        // if has_accepted_eula(command.guild_id) {
-        // Send a message to the user, saying that a server administrator needs to accept the eula
-        // }
-
-        let command_id = command.data.id;
-        let command_name = command.data.name.as_str();
-
-        debug!(name = %command_name, id = %command_id, "Handling application command");
-
-        // TODO: Don't hardcode this, have each command registered to this struct at runtime
-        match command_name {
-            "eula" => {
-                // Send a message with the EULA as the message body (or a link to the website)
-                // self.eula_command_handler.on_command_called(command).await?;
-            }
-            "mm" => {
-                // Find the related matchmaking subcommand
-            }
-            "league" => {
-                // Find the related league subcommand
-            }
-            "tournament" => {
-                // Find the related tournament subcommand
-            }
-            "admin" => {
-                // Admin related settings
-                // self.admin_command_handler
-                //     .on_command_called(command)
-                //     .await?;
-            }
-            _ => warn!(command_name = %command_name, "Unhandled application command"),
-        }
-
-        Ok(())
-    }
-
+    
     pub async fn on_message_component_event(
         &self,
         message: &MessageComponentInteraction,
