@@ -9,12 +9,13 @@ use twilight_model::{
         ChoiceCommandOptionData, CommandOption, CommandOptionChoice, CommandOptionValue,
         CommandType, NumberCommandOptionData,
     },
+    http::interaction::{InteractionResponse, InteractionResponseType},
     id::{
         marker::{GuildMarker, UserMarker},
         Id,
     },
 };
-use twilight_util::builder::command::{CommandBuilder, SubCommandBuilder};
+use twilight_util::builder::{command::CommandBuilder, InteractionResponseDataBuilder};
 
 use super::{ApplicationCommandHandler, ApplicationCommandUtilities};
 
@@ -122,6 +123,20 @@ impl ApplicationCommandHandler for LfgCommandHandler {
                 .await?;
 
             debug_assert!(res.rows_affected == 1);
+
+            let message = InteractionResponse {
+                kind: InteractionResponseType::ChannelMessageWithSource,
+                data: Some(
+                    InteractionResponseDataBuilder::new()
+                        .content("Stopped looking for games...".to_string())
+                        .build(),
+                ),
+            };
+
+            self.utils
+                .send_message(data.command, &message)
+                .await
+                .map_err(|e| anyhow!("Could not send message to user: {}", e))?;
         } else {
             // Start a new session
             let session = entity::matchmaking::lfg::ActiveModel {
@@ -136,6 +151,20 @@ impl ApplicationCommandHandler for LfgCommandHandler {
             entity::matchmaking::lfg::Entity::insert(session)
                 .exec(self.utils.db_ref())
                 .await?;
+
+            let message = InteractionResponse {
+                kind: InteractionResponseType::ChannelMessageWithSource,
+                data: Some(
+                    InteractionResponseDataBuilder::new()
+                        .content("Started looking for games".to_string())
+                        .build(),
+                ),
+            };
+
+            self.utils
+                .send_message(data.command, &message)
+                .await
+                .map_err(|e| anyhow!("Could not send message to user: {}", e))?;
         }
 
         Ok(())
