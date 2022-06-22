@@ -1,6 +1,18 @@
+use chrono::Utc;
+use entity::{
+    sea_orm::{prelude::Uuid, ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter, Set},
+    IdWrapper,
+};
 use std::sync::Arc;
-use twilight_model::application::command::{
-    ChoiceCommandOptionData, CommandOption, CommandOptionChoice, CommandType,
+use twilight_model::{
+    application::command::{
+        ChoiceCommandOptionData, CommandOption, CommandOptionChoice, CommandOptionValue,
+        CommandType, NumberCommandOptionData,
+    },
+    id::{
+        marker::{GuildMarker, UserMarker},
+        Id,
+    },
 };
 use twilight_util::builder::command::{CommandBuilder, SubCommandBuilder};
 
@@ -23,7 +35,7 @@ impl ApplicationCommandHandler for LfgCommandHandler {
                 "Look for games in the server".to_string(),
                 CommandType::ChatInput,
             )
-            .option(CommandOption::String(ChoiceCommandOptionData {
+            .option(CommandOption::Integer(NumberCommandOptionData {
                 autocomplete: false,
                 choices: vec![
                     CommandOptionChoice::Int {
@@ -56,7 +68,7 @@ impl ApplicationCommandHandler for LfgCommandHandler {
                     },
                     CommandOptionChoice::Int {
                         name: "1 day".to_string(),
-                        value: 60 * 12,
+                        value: 60 * 25,
                     },
                     CommandOptionChoice::Int {
                         name: "Forever (default)".to_string(),
@@ -65,8 +77,10 @@ impl ApplicationCommandHandler for LfgCommandHandler {
                 ],
                 description: "Start/stop looking for games after a certain amount of time"
                     .to_string(),
-                name: "how_long".to_string(),
+                name: "howlong".to_string(),
                 required: false,
+                max_value: Some(CommandOptionValue::Integer(60 * 24 * 7)),
+                min_value: Some(CommandOptionValue::Integer(-1)),
             }))
             .option(CommandOption::String(ChoiceCommandOptionData {
                 autocomplete: false,
@@ -82,6 +96,65 @@ impl ApplicationCommandHandler for LfgCommandHandler {
     }
 
     async fn execute(&self, data: &super::InteractionData) -> anyhow::Result<()> {
-        todo!()
+        let guild_id = data
+            .command
+            .guild_id
+            .ok_or(anyhow!("Command was not run in a guild"))?;
+        let member = data
+            .command
+            .member
+            .as_ref()
+            .ok_or(anyhow!("The command was not run in a guild"))?;
+        let user = member.user.as_ref().ok_or(anyhow!(
+            "Could not get user information for user \"{}\"",
+            member
+                .nick
+                .as_ref()
+                .unwrap_or(&"No nickname found".to_string())
+        ))?;
+
+        let lfg_session = self.get_user_lfg_session(guild_id, user.id).await?;
+
+        if let Some(lfg) = lfg_session {
+            // De-register the session
+            let res = entity::matchmaking::lfg::Entity::delete(lfg.into_active_model())
+                .exec(self.utils.db_ref())
+                .await?;
+
+            debug_assert!(res.rows_affected == 1);
+        } else {
+            // Start a new session
+            let session = entity::matchmaking::lfg::ActiveModel {
+                id: Set(Uuid::new_v4()),
+                guild_id: Set(guild_id.into()),
+                user_id: Set(user.id.into()),
+                started_at: Set(Utc::now()),
+                timeout_after: Set(None),
+                ..Default::default()
+            };
+
+            entity::matchmaking::lfg::Entity::insert(session)
+                .exec(self.utils.db_ref())
+                .await?;
+        }
+
+        Ok(())
+    }
+}
+
+impl LfgCommandHandler {
+    async fn get_user_lfg_session(
+        &self,
+        guild_id: Id<GuildMarker>,
+        user_id: Id<UserMarker>,
+    ) -> anyhow::Result<Option<entity::matchmaking::lfg::Model>> {
+        use entity::matchmaking::lfg;
+        let lfg_session = lfg::Entity::find()
+            .filter(lfg::Column::UserId.eq(Into::<IdWrapper<_>>::into(user_id)))
+            .filter(lfg::Column::GuildId.eq(Into::<IdWrapper<_>>::into(guild_id)))
+            .one(self.utils.db_ref())
+            .await?;
+
+        Ok(lfg_session)
     }
 }

@@ -81,6 +81,7 @@ impl MigrationTrait for Migration {
                     .col(
                         ColumnDef::new(matchmaking::lfg::Column::GuildId)
                             .big_integer()
+                            .unique_key()
                             .not_null(),
                     )
                     .col(
@@ -95,8 +96,7 @@ impl MigrationTrait for Migration {
                     )
                     .col(
                         ColumnDef::new(matchmaking::lfg::Column::TimeoutAfter)
-                            .timestamp_with_time_zone()
-                            .not_null(),
+                            .timestamp_with_time_zone(),
                     )
                     .to_owned(),
             )
