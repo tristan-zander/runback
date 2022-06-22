@@ -15,7 +15,9 @@ pub mod lobby {
 
     use super::*;
 
-    #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, EnumIter, DeriveActiveEnum, Iden)]
+    #[derive(
+        Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, EnumIter, DeriveActiveEnum, Iden,
+    )]
     #[sea_orm(rs_type = "String", db_type = "Enum", enum_name = "lobby_privacy")]
     pub enum LobbyPrivacy {
         #[sea_orm(string_value = "Open")]
@@ -74,10 +76,12 @@ pub mod lfg {
     pub struct Model {
         #[sea_orm(primary_key)]
         pub id: Uuid,
+        #[sea_orm(unique)]
         pub guild_id: IdWrapper<GuildMarker>,
         pub user_id: IdWrapper<UserMarker>,
         pub started_at: DateTimeUtc,
-        pub timeout_after: DateTimeUtc,
+        #[sea_orm(nullable)]
+        pub timeout_after: Option<DateTimeUtc>,
     }
 
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

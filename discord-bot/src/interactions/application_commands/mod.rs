@@ -1,7 +1,7 @@
 pub mod admin;
 pub mod eula;
-pub mod matchmaking;
 pub mod lfg;
+pub mod matchmaking;
 
 use std::sync::Arc;
 
@@ -54,7 +54,7 @@ impl ApplicationCommandHandlers {
             utils: utilities.clone(),
         })
     }
-    
+
     pub async fn on_message_component_event(
         &self,
         message: &MessageComponentInteraction,

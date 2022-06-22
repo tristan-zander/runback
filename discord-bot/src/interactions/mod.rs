@@ -8,6 +8,7 @@ use entity::sea_orm::DatabaseConnection;
 use tracing::Level;
 use twilight_cache_inmemory::InMemoryCache;
 use twilight_gateway::Shard;
+use twilight_http::request::TryIntoRequest;
 use twilight_model::{
     application::command::Command, gateway::payload::incoming::InteractionCreate,
 };

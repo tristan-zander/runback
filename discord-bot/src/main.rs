@@ -11,6 +11,7 @@ use config::Config;
 use entity::sea_orm::{ConnectOptions, Database, DatabaseConnection};
 use error::RunbackError;
 use futures::stream::StreamExt;
+use migration::MigratorTrait;
 use std::sync::Arc;
 use twilight_cache_inmemory::{InMemoryCache, ResourceType};
 use twilight_gateway::{cluster::ShardScheme, Cluster, Intents};
@@ -45,6 +46,8 @@ async fn main() -> Result<()> {
         .await
         .map_err(|e| anyhow!("Could not connect to database: {}", e))?;
     info!("Successfully connected to database.");
+
+    migration::Migrator::up(db.as_ref(), None).await?;
 
     let cache = Arc::new(
         InMemoryCache::builder()
