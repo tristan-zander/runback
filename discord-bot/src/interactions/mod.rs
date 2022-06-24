@@ -3,6 +3,7 @@ pub mod panels;
 
 use std::{collections::HashMap, sync::Arc};
 
+use dashmap::DashMap;
 use entity::sea_orm::DatabaseConnection;
 
 use tracing::Level;
@@ -41,26 +42,26 @@ impl InteractionHandler {
         let application_command_handlers =
             ApplicationCommandHandlers::new(db, cache, standby).await?;
 
-        let mut new = Self {
-            application_command_handlers,
-            command_map: HashMap::new(),
-        };
+        let mut command_map = HashMap::new();
+
+        let lfg_sessions = Arc::new(DashMap::new());
 
         event!(Level::INFO, "Registering top-level command handlers");
 
         let top_level_handlers: Vec<Box<dyn ApplicationCommandHandler + Send + Sync>> = vec![
             Box::new(PingCommandHandler {
-                utils: new.application_command_handlers.utils.clone(),
+                utils: application_command_handlers.utils.clone(),
             }),
             Box::new(AdminCommandHandler::new(
-                new.application_command_handlers.utils.clone(),
+                application_command_handlers.utils.clone(),
             )),
             Box::new(MatchmakingCommandHandler {}),
             Box::new(EulaCommandHandler::new(
-                new.application_command_handlers.utils.clone(),
+                application_command_handlers.utils.clone(),
             )),
             Box::new(LfgCommandHandler {
-                utils: new.application_command_handlers.utils.clone(),
+                utils: application_command_handlers.utils.clone(),
+                lfg_sessions,
             }),
         ];
 
@@ -72,17 +73,16 @@ impl InteractionHandler {
 
                 command_models.push(c.to_owned());
 
-                new.command_map.insert(c.name.to_owned(), handler);
+                command_map.insert(c.name.to_owned(), handler);
 
                 debug!(name = %c.name, "Registered application command handler");
             }
         }
 
-        let _res = new
-            .application_command_handlers
+        let _res = application_command_handlers
             .utils
             .http_client
-            .interaction(new.application_command_handlers.utils.application_id)
+            .interaction(application_command_handlers.utils.application_id)
             .set_guild_commands(
                 crate::CONFIG.debug_guild_id.unwrap(),
                 command_models.as_slice(),
@@ -92,7 +92,10 @@ impl InteractionHandler {
             .models()
             .await?;
 
-        Ok(new)
+        Ok(Self {
+            application_command_handlers,
+            command_map,
+        })
     }
 
     #[tracing::instrument(skip_all)]

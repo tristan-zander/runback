@@ -8,6 +8,6 @@ edition = "2021"
 [dependencies]
 sea-orm = { version = "0.8.0", features = [ "sqlx-postgres", "runtime-tokio-rustls", "macros", "with-chrono", "sqlx-chrono" ], default-features = false }
 chrono = "0.4.19"
-twilight-model = "0.10.1"
+twilight-model = "0.11.0"
 serde = "1.0.133"
 tracing = "0.1.29"

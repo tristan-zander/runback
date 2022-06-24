@@ -15,12 +15,21 @@ pub mod matchmaking;
 
 pub use sea_orm;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct IdWrapper<T> {
     /// This field is translated into i64 through a memory transmute
     pub inner: NonZeroU64,
     #[serde(skip)]
     data: PhantomData<T>,
+}
+
+impl<T> Clone for IdWrapper<T> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+            data: PhantomData {},
+        }
+    }
 }
 
 impl<T> std::fmt::Display for IdWrapper<T> {

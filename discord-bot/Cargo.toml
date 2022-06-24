@@ -13,22 +13,24 @@ migration = { path = "migration" }
 anyhow = "1.0.57"
 figment = { version = "0.10", features = ["toml", "env"] }
 serde = "1.0.133"
-serde_json = "1.0.79"
+serde_json = "1.0.81"
+dashmap = "5.3.4"
+parking_lot = "0.12.1"
 lazy_static = "1.4.0"
 chrono = "0.4.19"
-tokio = { version = "1.16", features = ["full"]}
+tokio = { version = "1.19.2", features = ["rt", "rt-multi-thread", "macros"]}
 futures = "0.3.19"
 async-trait = "0.1.53"
 tracing = "0.1.29"
 tracing-subscriber = { version = "*", features = ["json"] }
 rdkafka = { version = "0.28.0", features = ["cmake-build"] }
 # Twilight.rs
-twilight-cache-inmemory = "0.10.1"
-twilight-gateway = "0.10.1"
-twilight-http = "0.10.1"
-twilight-model = "0.10.1"
-twilight-standby = "0.10.0"
-twilight-embed-builder = "0.10.1"
-twilight-mention = "0.10.0"
-twilight-validate = "0.10.1"
-twilight-util = { version = "0.10.1", features = ["full"] }
+twilight-cache-inmemory = "0.11.0"
+twilight-gateway = "0.11.0"
+twilight-http = "0.11.0"
+twilight-model = "0.11.0"
+twilight-standby = "0.11.0"
+twilight-embed-builder = "0.11.0"
+twilight-mention = "0.11.0"
+twilight-validate = "0.11.0"
+twilight-util = { version = "0.11.0", features = ["full"] }
