@@ -71,11 +71,10 @@ async fn main() -> Result<()> {
 
     // This is the default scheme. It will automatically create as many
     // shards as is suggested by Discord.
-    let scheme = ShardScheme::Auto;
+    // let scheme = ShardScheme::Bucket { bucket_id: (), concurrency: (), total: () };
 
     // Use intents to only receive guild message events.
     let (cluster, mut events) = Cluster::builder(CONFIG.token.clone(), Intents::GUILD_MESSAGES)
-        .shard_scheme(scheme)
         .build()
         .await?;
     let cluster = Arc::new(cluster);
