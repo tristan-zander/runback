@@ -9,7 +9,9 @@ edition = "2021"
 sea-orm = { version = "^0", features = [ "sqlx-postgres", "runtime-tokio-rustls", "macros" ], default-features = false }
 reqwest = "*"
 openidconnect = "2.2.0"
-serde = "1.0.133"
-tracing = "0.1.29"
+serde = "~1.0"
+tracing = "~0.1"
 tracing-subscriber = { version = "*", features = ["json"] }
 tracing-log = "*"
+dashmap = "~5.3"
+anyhow = "~1.0"
