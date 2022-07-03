@@ -9,7 +9,7 @@ extern crate tracing;
 
 pub mod auth;
 pub mod config;
-pub mod logging;
 pub mod eventing;
+pub mod logging;
 
 // TODO: Write common logger setup
