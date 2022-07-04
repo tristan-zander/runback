@@ -1,24 +1,37 @@
 use std::{
-    any::{Any},
+    any::{self, Any},
+    pin::Pin,
+    sync::Arc,
     time::Duration,
 };
 
 use dashmap::DashMap;
+use futures::{Future, FutureExt};
 use kafka::{
     consumer::Consumer,
     producer::{Producer, Record},
 };
 use sea_orm::prelude::Uuid;
-use serde::{Deserialize};
-use tokio::sync::{Mutex, RwLock};
+use serde::{Deserialize, Serialize};
+use tokio::{
+    sync::{Mutex, RwLock},
+    task::JoinHandle,
+};
 
+macro_rules! type_name {
+    ($type:ty) => {
+        ::std::any::type_name::<$type>().split("::").last().unwrap()
+    };
+}
 
 pub struct Orchestrator<'a> {
     message_producer: Producer,
     message_consumer: Consumer,
     outbound_messages: Mutex<Vec<Record<'a, &'a [u8], &'a [u8]>>>,
     // Only one event handler per event type
+    /// A map of the Kafka Event Topic -> Event Handler
     event_handlers: RwLock<DashMap<&'static str, Box<dyn ErasedEventHandler>>>,
+    futures: Vec<Box<dyn Future<Output = anyhow::Result<()>> + Send>>,
 }
 
 impl<'a> Orchestrator<'a> {
@@ -46,40 +59,51 @@ impl<'a> Orchestrator<'a> {
             outbound_messages: Mutex::new(Vec::with_capacity(128)),
             message_consumer,
             event_handlers: RwLock::new(DashMap::new()),
+            futures: Vec::with_capacity(128),
         })
     }
 
     /// Publish an event through Kafka
-    pub async fn publish<T: Event>(&self, event: &T) {
+    pub async fn publish<T: Event>(&self, event: &T) -> anyhow::Result<()> {
         let mut messages = self.outbound_messages.lock().await;
 
+        let ser = event.serialize();
+
+        if let Err(e) = ser {
+            return Err(e);
+        }
+
         messages.push(Record::<'a>::from_key_value(
-            std::any::type_name::<T>().split("::").last().unwrap(),
+            type_name!(T),
             Box::leak(Box::new(Uuid::new_v4().as_bytes().to_owned())),
-            Box::leak(event.get_data()),
+            // SAFETY: I already checked that `ser` is Some() before this call
+            Box::leak(unsafe { ser.unwrap_unchecked() }),
         ));
+
+        Ok(())
     }
 
     /// Add an event handler to the orchestrator
     pub async fn add_event_hander<T>(&self, mut handler: Box<T>) -> anyhow::Result<()>
     where
         T: EventHandler + Send + Sync + 'static,
+        T::Event: Send + Sync,
     {
         handler.register()?;
 
-        let _old = self.event_handlers.write().await.insert(
-            std::any::type_name::<T::Event>()
-                .split("::")
-                .last()
-                .unwrap(),
-            handler,
-        );
+        let _old = self
+            .event_handlers
+            .write()
+            .await
+            .insert(type_name!(T::Event), handler);
 
         Ok(())
     }
 
     /// Waits for an event given a certain criteria
-    pub async fn wait_for_event<T: Event, F: Fn() -> ()>(&self, _f: F) -> () {}
+    pub async fn wait_for_event<T: Event, F: Fn() -> ()>(&self, _f: F) -> T {
+        todo!()
+    }
 
     /// Fetch any incoming events and dispatch any event handlers.
     pub async fn process(&mut self) -> anyhow::Result<()> {
@@ -105,7 +129,9 @@ impl<'a> Orchestrator<'a> {
             };
 
             for message in set.messages() {
-                handler.execute(&message.value)?;
+                let fut = handler.execute(message.value.to_owned().into_boxed_slice());
+
+                self.futures.push(Box::new(fut));
             }
         }
 
@@ -129,10 +155,19 @@ impl<'a> Drop for Orchestrator<'a> {
     }
 }
 
-pub trait Event: Deserialize<'static> {
-    fn get_data(&self) -> Box<[u8]>;
+/// A struct that holds data about event data
+pub struct EventMetadata<T> {
+    id: Uuid,
+    data: T,
 }
 
+pub trait Event: EventSerializer<Self>
+where
+    Self: Sized,
+{
+}
+
+#[async_trait]
 pub trait EventHandler {
     type Event: Event;
 
@@ -140,53 +175,93 @@ pub trait EventHandler {
 
     fn unregister(&mut self) -> anyhow::Result<()>;
 
-    fn execute(&self, event: &Self::Event) -> anyhow::Result<()>;
+    async fn execute(&self, event: Box<Self::Event>) -> anyhow::Result<()>;
 }
 
+pub trait EventSerializer<T> {
+    fn serialize(&self) -> anyhow::Result<Box<[u8]>>;
+
+    fn deserialize(data: Box<[u8]>) -> anyhow::Result<T>;
+}
+
+impl<T> EventSerializer<T> for T
+where
+    T: Deserialize<'static> + Serialize,
+{
+    fn serialize(&self) -> anyhow::Result<Box<[u8]>> {
+        match serde_json::ser::to_vec(self) {
+            Ok(ser) => Ok(ser.into_boxed_slice()),
+            Err(e) => {
+                error!("Could not serialize {} data: {}", type_name!(T), e);
+                Err(anyhow!(e))
+            }
+        }
+    }
+
+    fn deserialize(data: Box<[u8]>) -> anyhow::Result<T> {
+        match serde_json::de::from_slice(Box::leak(data)) {
+            Ok(deser) => Ok(deser),
+            Err(e) => {
+                error!("Could not deserialize {} data: {}", type_name!(T), e);
+                Err(anyhow!(e))
+            }
+        }
+    }
+}
+
+#[async_trait]
 pub(crate) trait ErasedEventHandler: Any {
     /// If the EventHandler fails to register, the event handler will not be added.
     fn register(&mut self) -> anyhow::Result<()>;
 
     fn unregister(&mut self) -> anyhow::Result<()>;
 
-    fn execute(&self, data: &[u8]) -> anyhow::Result<()>;
+    async fn execute(&self, data: Box<[u8]>) -> anyhow::Result<()>;
 }
 
+#[async_trait]
 impl<H> ErasedEventHandler for H
 where
-    H: EventHandler + 'static,
+    H: EventHandler + Send + Sync + 'static,
+    H::Event: Send + Sync,
 {
     fn register(&mut self) -> anyhow::Result<()> {
-        trace!(action = ?"register", handler = ?std::any::type_name::<H>());
+        trace!(action = ?"register", handler = ?type_name!(H));
         self.register()
     }
 
     fn unregister(&mut self) -> anyhow::Result<()> {
-        trace!(action = ?"unregister", handler = ?std::any::type_name::<H>());
+        trace!(action = ?"unregister", handler = ?type_name!(H));
         self.unregister()
     }
 
-    fn execute(&self, data: &[u8]) -> anyhow::Result<()> {
+    async fn execute(&self, data: Box<[u8]>) -> anyhow::Result<()> {
+        // Used for debugging only.
+        let data_string = String::from_utf8_lossy(data.as_ref()).to_string();
         trace!(
-            handler = ?std::any::type_name::<H>(),
-            data = ?String::from_utf8_lossy(data)
+            handler = ?type_name!(H),
+            data = ?data_string
         );
 
-        // TODO: Figure out how to do this without copying.
-        let boxed = data.to_owned().into_boxed_slice();
-        let data = serde_json::de::from_slice(Box::leak(boxed))?;
+        let deser = <<H as EventHandler>::Event as EventSerializer<H::Event>>::deserialize(data);
 
-        self.execute(&data)?;
+        match deser {
+            Err(e) => {
+                error!(data = ?data_string, event = ?type_name!(<H as EventHandler>::Event), error = ?e,
+                    "Could not deserialize incoming data for event"
+                );
+                return Err(anyhow!(
+                    "Could not deserialize incoming data for event {}: {}",
+                    type_name!(<H as EventHandler>::Event),
+                    e
+                ));
+            }
+            Ok(val) => {
+                self.execute(Box::new(val)).await?;
 
-        Ok(())
-
-        // if let Some(data) = data.downcast_ref() {
-        //     return self.execute(data);
-        // }
-
-        // Err(anyhow!(
-        //     "Could not downcast the event data to the proper type"
-        // ))
+                return Ok(());
+            }
+        }
     }
 }
 
@@ -209,15 +284,7 @@ mod tests {
         pub val: u32,
     }
 
-    impl Event for TestEvent {
-        fn get_data(&self) -> Box<[u8]> {
-            let ret = match serde_json::to_vec(self) {
-                Ok(v) => kafka::producer::AsBytes::as_bytes(&v).to_owned().into_boxed_slice(),
-                Err(_) => Box::new([]),
-            };
-            ret
-        }
-    }
+    impl Event for TestEvent {}
 
     struct TestHandler {
         inner: Arc<Mutex<u32>>,
@@ -233,6 +300,7 @@ mod tests {
         }
     }
 
+    #[async_trait]
     impl EventHandler for TestHandler {
         type Event = TestEvent;
 
@@ -250,17 +318,8 @@ mod tests {
             Ok(())
         }
 
-        fn execute(&self, event: &Self::Event) -> anyhow::Result<()> {
-            loop {
-                let mut lock = match self.inner.try_lock() {
-                    Ok(lock) => lock,
-                    Err(_) => {
-                        continue;
-                    }
-                };
-                lock.add_assign(event.val);
-                break;
-            }
+        async fn execute(&self, event: Box<Self::Event>) -> anyhow::Result<()> {
+            self.inner.lock().await.add_assign(event.val);
 
             Ok(())
         }
@@ -281,9 +340,9 @@ mod tests {
             .await
             .unwrap();
 
-        orchestrator.publish(&TestEvent { val: 1 }).await;
-        orchestrator.publish(&TestEvent { val: 2 }).await;
-        orchestrator.publish(&TestEvent { val: 3 }).await;
+        orchestrator.publish(&TestEvent { val: 1 }).await.unwrap();
+        orchestrator.publish(&TestEvent { val: 2 }).await.unwrap();
+        orchestrator.publish(&TestEvent { val: 3 }).await.unwrap();
 
         assert!(registered.load(Ordering::Relaxed) == true);
         assert!(inner.lock().await.eq(&0));
