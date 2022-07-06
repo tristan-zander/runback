@@ -30,8 +30,8 @@ pub struct Orchestrator<'a> {
     outbound_messages: Mutex<Vec<Record<'a, &'a [u8], &'a [u8]>>>,
     // Only one event handler per event type
     /// A map of the Kafka Event Topic -> Event Handler
-    event_handlers: RwLock<DashMap<&'static str, Box<dyn ErasedEventHandler>>>,
-    futures: Vec<Box<dyn Future<Output = anyhow::Result<()>> + Send>>,
+    event_handlers: RwLock<DashMap<&'static str, Arc<Box<dyn ErasedEventHandler + Send + Sync>>>>,
+    futures: Vec<Pin<Box<dyn Future<Output = anyhow::Result<()>> + Send>>>,
 }
 
 impl<'a> Orchestrator<'a> {
@@ -95,7 +95,7 @@ impl<'a> Orchestrator<'a> {
             .event_handlers
             .write()
             .await
-            .insert(type_name!(T::Event), handler);
+            .insert(type_name!(T::Event), Arc::new(handler));
 
         Ok(())
     }
@@ -129,31 +129,46 @@ impl<'a> Orchestrator<'a> {
             };
 
             for message in set.messages() {
-                let fut = handler.execute(message.value.to_owned().into_boxed_slice());
+                let handler = handler.clone();
+                let msg = message.value.to_owned();
+                let fut = async move { handler.execute(msg.into_boxed_slice()).await };
 
-                self.futures.push(Box::new(fut));
+                self.futures.push(Box::pin(fut));
             }
         }
+        
+        // TODO: Advance futures, don't just await them all.
+        let results = futures::future::join_all(self.futures.as_mut_slice()).await;
+        self.futures.clear();
+
+        for res in results {
+            if let Err(e) = res {
+                error!(error = ?e, "Error encountered while executing event handler");
+            }
+        }
+
 
         Ok(())
     }
 }
 
-impl<'a> Drop for Orchestrator<'a> {
-    fn drop(&mut self) {
-        if let Ok(handlers) = self.event_handlers.try_write() {
-            for mut handler in handlers.iter_mut() {
-                let handler = handler.value_mut();
-                match handler.unregister() {
-                    Ok(_) => {}
-                    Err(e) => error!("Failure to unregister handler: {}", e),
-                }
-            }
-        } else {
-            panic!("Could not de-register event handlers.");
-        }
-    }
-}
+// impl<'a> Drop for Orchestrator<'a> {
+//     fn drop(&mut self) {
+//         if self.futures.len() > 0 {
+//             let rt = tokio::runtime::Handle::current();
+
+//             let futs = futures::future::join_all(self.futures.as_mut_slice());
+
+//             let results = rt.block_on(futs);
+
+//             for res in results.into_iter().filter_map(|r| r.err()) {
+//                 error!( error = ?res, "Encountered error while executing remaining handlers during Orhcestrator drop");
+//             }
+
+//             self.futures.clear();
+//         }
+//     }
+// }
 
 /// A struct that holds data about event data
 pub struct EventMetadata<T> {
