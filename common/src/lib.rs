@@ -6,6 +6,8 @@ extern crate anyhow;
 extern crate async_trait;
 #[macro_use]
 extern crate tracing;
+#[macro_use]
+extern crate tokio;
 
 pub mod auth;
 pub mod config;
