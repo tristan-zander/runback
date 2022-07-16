@@ -10,7 +10,7 @@ use twilight_cache_inmemory::InMemoryCache;
 use twilight_http::Client as DiscordHttpClient;
 use twilight_model::{
     application::{
-        command::{Command, CommandType, OptionsCommandOptionData},
+        command::{Command, CommandType},
         interaction::{
             modal::ModalSubmitInteraction, ApplicationCommand as DiscordApplicationCommand,
             MessageComponentInteraction,
