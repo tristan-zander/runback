@@ -1,12 +1,7 @@
-use std::{
-    any::{self, Any},
-    pin::Pin,
-    sync::Arc,
-    time::Duration,
-};
+use std::{any::Any, sync::Arc, time::Duration};
 
 use dashmap::DashMap;
-use futures::{future::select_all, stream::FuturesUnordered, Future, Stream, StreamExt};
+use futures::{future::BoxFuture, stream::FuturesUnordered, FutureExt, StreamExt};
 use kafka::{
     consumer::Consumer,
     producer::{Producer, Record},
@@ -30,19 +25,15 @@ const MESSAGE_BUF_LEN: usize = 128;
 
 pub struct Orchestrator<'a> {
     // TODO: Make this a raw KafkaClient eventually
-    message_producer: Producer,
-    message_consumer: Consumer,
+    message_producer: Arc<Mutex<Producer>>,
+    message_consumer: Arc<Mutex<Consumer>>,
     // Only one event handler per event type
     /// A map of the Kafka Event Topic -> Event Handler
     event_handlers: RwLock<DashMap<&'static str, Arc<Box<dyn ErasedEventHandler + Send + Sync>>>>,
-    futures: FuturesUnordered<Pin<Box<dyn Future<Output = anyhow::Result<()>>>>>,
+    futures: Arc<Mutex<FuturesUnordered<BoxFuture<'a, anyhow::Result<()>>>>>,
     message_sender: Sender<RecordType<'a>>,
     message_receiver: Receiver<RecordType<'a>>,
 }
-
-// TODO: Figure out why this isn't Send and Sync by default
-unsafe impl<'a> Send for Orchestrator<'a> {}
-unsafe impl<'a> Sync for Orchestrator<'a> {}
 
 impl<'a> Orchestrator<'a> {
     pub fn new(hosts: Vec<String>) -> anyhow::Result<Self> {
@@ -54,15 +45,19 @@ impl<'a> Orchestrator<'a> {
 
         let id = Uuid::new_v4().to_string();
 
-        let message_producer = Producer::from_hosts(hosts.to_owned())
-            .with_client_id(id.to_owned())
-            .with_ack_timeout(Duration::from_secs(1))
-            .create()?;
+        let message_producer = Arc::new(Mutex::new(
+            Producer::from_hosts(hosts.to_owned())
+                .with_client_id(id.to_owned())
+                .with_ack_timeout(Duration::from_secs(1))
+                .create()?,
+        ));
 
-        let message_consumer = Consumer::from_hosts(hosts.to_owned())
-            .with_client_id(id.to_owned())
-            .with_topic("TestEvent".to_string())
-            .create()?;
+        let message_consumer = Arc::new(Mutex::new(
+            Consumer::from_hosts(hosts.to_owned())
+                .with_client_id(id.to_owned())
+                .with_topic("TestEvent".to_string())
+                .create()?,
+        ));
 
         let (tx, rx) = tokio::sync::mpsc::channel(MESSAGE_BUF_LEN);
 
@@ -70,7 +65,7 @@ impl<'a> Orchestrator<'a> {
             message_producer,
             message_consumer,
             event_handlers: RwLock::new(DashMap::new()),
-            futures: FuturesUnordered::new(),
+            futures: Arc::new(Mutex::new(FuturesUnordered::new())),
             message_sender: tx,
             message_receiver: rx,
         })
@@ -130,25 +125,26 @@ impl<'a> Orchestrator<'a> {
     pub async fn process(&mut self) -> anyhow::Result<()> {
         let rx = self.message_receiver.recv();
         let sleep = tokio::time::sleep(Duration::from_millis(500));
+        let mut futs = self.futures.lock().await;
 
         select! {
             Some(rec) = rx => {
                 info!("Received record: {:#?}", rec);
                 // TODO: add the record to a batch of records
-                self.message_producer.send(
-                    &rec
-                )?;
+                self.send_message(&rec).await?;
             }
             _ = sleep => {
                 info!("Slept for 500 millis");
                 // TODO: send all the batched messages
             }
-            Some(res) = self.futures.next() => {
+            Some(res) = futs.next() => {
                 info!("Advanced future: {:#?}", res);
             }
         }
 
-        let message_sets = self.message_consumer.poll()?;
+        drop(futs);
+
+        let message_sets = self.message_consumer.lock().await.poll()?;
 
         for set in message_sets.iter() {
             let topic = set.topic();
@@ -166,7 +162,7 @@ impl<'a> Orchestrator<'a> {
                 let msg = message.value.to_owned();
                 let fut = async move { handler.execute(msg.into_boxed_slice()).await };
 
-                self.futures.push(Box::pin(fut));
+                self.futures.lock().await.push(Box::pin(fut));
             }
         }
 
@@ -178,15 +174,59 @@ impl<'a> Orchestrator<'a> {
 
         Ok(())
     }
+
+    async fn send_message(&self, rec: &RecordType<'a>) -> anyhow::Result<()> {
+        self.message_producer
+            .lock()
+            .await
+            .send(rec)
+            .map_err(|e| anyhow!(e))
+    }
+
+    /// Publish all messages and advance all futures. This will also close the bus for messages,
+    /// so the orchestrator may no longer publish any events
+    pub async fn cleanup(&mut self) -> anyhow::Result<()> {
+        self.message_receiver.close();
+
+        let mut futs = self.futures.lock().await;
+        for msg in self.message_receiver.recv().await {
+            // If we do have an event handler for this, then execute it.
+            if let Some(handler) = self.event_handlers.read().await.get(msg.topic) {
+                let handler = handler.clone();
+                let msg = msg.value.to_owned();
+                let fut = async move { handler.execute(msg.into_boxed_slice()).await }.boxed();
+                futs.push(fut);
+            } else {
+                // Otherwise, send it to Kafka
+                self.send_message(&msg).await?;
+            }
+        }
+
+        info!(length = ?futs.len(), "Number of futures");
+
+        while let Some(res) = futs.next().await {
+            if let Err(e) = res {
+                error!(error = ?e, "Encountered error while resolving future");
+            }
+        }
+
+        debug_assert!(
+            futs.len() == 0,
+            "Futures did not advance fully. There are still {} left",
+            futs.len()
+        );
+
+        Ok(())
+    }
 }
 
 // TODO: Implement Drop for the Orchestrator
 
 /// A struct that holds data about event data
-pub struct EventMetadata<T> {
-    id: Uuid,
-    data: T,
-}
+// pub struct EventMetadata<T> {
+//     id: Uuid,
+//     data: T,
+// }
 
 pub trait Event: EventSerializer<Self>
 where
@@ -416,6 +456,7 @@ mod tests {
 
             let mut rx = Cell::new(rx);
 
+            // Process until finished
             loop {
                 let mut orc = orchestrator.write().await;
                 select! {
@@ -431,16 +472,13 @@ mod tests {
                 }
             }
 
-            let mut lock = orchestrator.write().await;
-            lock.process().await.unwrap();
-            lock.process().await.unwrap();
-            lock.process().await.unwrap();
+            orchestrator.write().await.cleanup().await.unwrap();
 
-            for res in lock.futures.next().await {
-                assert!(res.is_ok());
-            }
-
-            assert!(inner.lock().await.eq(&6));
+            assert!(
+                inner.lock().await.eq(&6),
+                "Could not verify ending value: {}",
+                *inner.lock().await
+            );
         }
         .instrument(span!(Level::INFO, "Debug"))
         .await;
