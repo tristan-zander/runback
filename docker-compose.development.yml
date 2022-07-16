@@ -17,7 +17,6 @@ services:
       - ROCKET_ADDRESS=0.0.0.0
     depends_on:
       - redis
-      - keycloak
       - kafka
       - db
 
@@ -30,28 +29,27 @@ services:
       - build_cache:/root/.cargo
     depends_on:
       - redis
-      - keycloak
       - kafka
       - db
 
   redis:
     image: redis
 
-  keycloak:
-    image: bitnami/keycloak
-    ports:
-      - 8080:8080
-      - 8443:8443
-    environment:
-      - KEYCLOAK_ADMIN_USER=admin
-      - KEYCLOAK_ADMIN_PASSWORD=password
-      - KEYCLOAK_DATABASE_HOST=db
-      - KEYCLOAK_DATABASE_NAME=keycloak
-      - KEYCLOAK_DATABASE_USER=gale
-      - KEYCLOAK_DATABASE_PASSWORD=password
-      - KEYCLOAK_DATABASE_SCHEMA=public
-    depends_on:
-      - db
+  # keycloak:
+  #   image: bitnami/keycloak
+  #   ports:
+  #     - 8080:8080
+  #     - 8443:8443
+  #   environment:
+  #     - KEYCLOAK_ADMIN_USER=admin
+  #     - KEYCLOAK_ADMIN_PASSWORD=password
+  #     - KEYCLOAK_DATABASE_HOST=db
+  #     - KEYCLOAK_DATABASE_NAME=keycloak
+  #     - KEYCLOAK_DATABASE_USER=gale
+  #     - KEYCLOAK_DATABASE_PASSWORD=password
+  #     - KEYCLOAK_DATABASE_SCHEMA=public
+  #   depends_on:
+  #     - db
 
   zookeeper:
     image: confluentinc/cp-zookeeper:latest
