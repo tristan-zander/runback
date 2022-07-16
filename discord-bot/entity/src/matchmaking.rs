@@ -162,6 +162,6 @@ pub mod panel {
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
     pub enum Relation {
         // ActiveSession,
-    // LookingForMatch
+        // LookingForMatch
     }
 }

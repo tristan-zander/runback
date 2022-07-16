@@ -6,15 +6,21 @@ extern crate lazy_static;
 extern crate anyhow;
 #[macro_use]
 extern crate async_trait;
+#[macro_use]
+extern crate tokio;
 
 use config::Config;
 use entity::sea_orm::{ConnectOptions, Database, DatabaseConnection};
 use error::RunbackError;
-use futures::stream::StreamExt;
+use futures::{
+    future::select,
+    stream::{FuturesUnordered, StreamExt},
+};
 use migration::MigratorTrait;
 use std::sync::Arc;
+use tokio::signal::unix::{signal, SignalKind};
 use twilight_cache_inmemory::{InMemoryCache, ResourceType};
-use twilight_gateway::{cluster::ShardScheme, Cluster, Intents};
+use twilight_gateway::{Cluster, Intents};
 use twilight_standby::Standby;
 
 use twilight_model::gateway::event::Event;
@@ -87,48 +93,78 @@ async fn main() -> Result<()> {
         cluster_spawn.up().await;
     });
 
-    // Process each event as they come in.
-    while let Some((shard_id, event)) = events.next().await {
-        let cluster_ref = cluster.clone();
+    let mut event_futures = FuturesUnordered::new();
 
-        // Update the cache with the event.
-        cache.update(&event);
-        standby.process(&event);
+    let mut sighup = signal(SignalKind::hangup())?;
+    let mut sigint = signal(SignalKind::interrupt())?;
 
-        trace!(ev = %format!("{:?}", event), "Received Discord event");
+    loop {
+        let (s1, s2) = (sighup.recv(), sigint.recv());
+        pin!(s1, s2);
+        let shutdown = select(s1, s2);
 
-        let _shard = match cluster_ref.shard(shard_id) {
-            Some(s) => s,
-            None => {
-                error!(shard = %shard_id, "Invalid shard received during event");
-                // Do some error handling here.
-                continue;
-            }
-        };
+        select! {
+            ev = events.next() => {
+                if let Some((shard_id, event)) = ev {
+                    let cluster_ref = cluster.clone();
 
-        match event {
-            Event::Ready(_) => {
-                // Do some intital checks
-                // Check to see if all of the panels related to this shard are healthy
-                info!("Bot is ready!")
-            }
-            Event::InteractionCreate(i) => {
-                let interaction_ref = interactions.clone();
-                tokio::spawn(async move {
-                    let shard = cluster_ref.shard(shard_id).unwrap();
-                    let res = interaction_ref.handle_interaction(i, shard).await;
-                    if let Err(e) = res {
-                        error!(error = %e, "Error occurred while handling interactions.");
-                        debug!(debug_error = %format!("{:?}", e), "Error occurred while handling interactions.");
+                    // Update the cache with the event.
+                    cache.update(&event);
+                    standby.process(&event);
+
+                    trace!(ev = %format!("{:?}", event), "Received Discord event");
+
+                    let _shard = match cluster_ref.shard(shard_id) {
+                        Some(s) => s,
+                        None => {
+                            error!(shard = %shard_id, "Invalid shard received during event");
+                            // Do some error handling here.
+                            continue;
+                        }
+                    };
+
+                    match event {
+                        Event::Ready(_) => {
+                            // Do some intital checks
+                            // Check to see if all of the panels related to this shard are healthy
+                            info!("Bot is ready!")
+                        }
+                        Event::InteractionCreate(i) => {
+                            let interaction_ref = interactions.clone();
+                            let handle = tokio::spawn(async move {
+                                let shard = cluster_ref.shard(shard_id).unwrap();
+                                let res = interaction_ref.handle_interaction(i, shard).await;
+                                if let Err(e) = res {
+                                    error!(error = %e, "Error occurred while handling interactions.");
+                                    debug!(debug_error = %format!("{:?}", e), "Error occurred while handling interactions.");
+                                }
+                            });
+                            event_futures.push(handle);
+                        }
+                        Event::GatewayHeartbeatAck => {
+                            // ignore
+                        }
+                        _ => debug!(kind = %format!("{:?}", event.kind()), "Unhandled event"),
                     }
-                });
+                } else {
+                    break;
+                }
             }
-            Event::GatewayHeartbeatAck => {
-                // ignore
+            result = event_futures.next() => {
+                if let Some(res) = result {
+                    if let Err(e) = res {
+                        error!(error = ?e, "Event handler errored out");
+                    }
+                }
             }
-            _ => debug!(kind = %format!("{:?}", event.kind()), "Unhandled event"),
+            _ = shutdown => {
+                info!("Received shutdown signal");
+                break;
+            }
         }
     }
+
+    cluster.clone().down();
 
     return Ok(());
 }
