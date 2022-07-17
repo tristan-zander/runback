@@ -1,4 +1,8 @@
-use std::{any::Any, sync::Arc, time::Duration};
+use std::{
+    any::{Any, TypeId},
+    sync::Arc,
+    time::Duration,
+};
 
 use dashmap::DashMap;
 use futures::{future::BoxFuture, stream::FuturesUnordered, FutureExt, StreamExt};
@@ -23,19 +27,18 @@ type RecordType<'a> = Record<'a, &'a [u8], &'a [u8]>;
 
 const MESSAGE_BUF_LEN: usize = 128;
 
-pub struct Orchestrator<'a> {
+pub struct EventOrchestrator<'a> {
     // TODO: Make this a raw KafkaClient eventually
-    message_producer: Arc<Mutex<Producer>>,
-    message_consumer: Arc<Mutex<Consumer>>,
-    // Only one event handler per event type
+    kafka_producer: Arc<Mutex<Producer>>,
+    kafka_consumer: Arc<Mutex<Consumer>>,
     /// A map of the Kafka Event Topic -> Event Handler
     event_handlers: RwLock<DashMap<&'static str, Arc<Box<dyn ErasedEventHandler + Send + Sync>>>>,
     futures: Arc<Mutex<FuturesUnordered<BoxFuture<'a, anyhow::Result<()>>>>>,
-    message_sender: Sender<RecordType<'a>>,
-    message_receiver: Receiver<RecordType<'a>>,
+    event_sender: Sender<RecordType<'a>>,
+    event_receiver: Receiver<RecordType<'a>>,
 }
 
-impl<'a> Orchestrator<'a> {
+impl<'a> EventOrchestrator<'a> {
     pub fn new(hosts: Vec<String>) -> anyhow::Result<Self> {
         if hosts.len() == 0 {
             return Err(anyhow!(
@@ -62,12 +65,12 @@ impl<'a> Orchestrator<'a> {
         let (tx, rx) = tokio::sync::mpsc::channel(MESSAGE_BUF_LEN);
 
         Ok(Self {
-            message_producer,
-            message_consumer,
+            kafka_producer: message_producer,
+            kafka_consumer: message_consumer,
             event_handlers: RwLock::new(DashMap::new()),
             futures: Arc::new(Mutex::new(FuturesUnordered::new())),
-            message_sender: tx,
-            message_receiver: rx,
+            event_sender: tx,
+            event_receiver: rx,
         })
     }
 
@@ -76,7 +79,7 @@ impl<'a> Orchestrator<'a> {
         let ser = event.serialize()?;
 
         let res = self
-            .message_sender
+            .event_sender
             .send(Record::from_key_value(
                 type_name!(T),
                 Box::leak(Box::new(Uuid::new_v4().as_bytes().to_owned())),
@@ -95,6 +98,17 @@ impl<'a> Orchestrator<'a> {
                 String::from_utf8_lossy(e.0.key)
             ));
         }
+
+        Ok(())
+    }
+
+    /// Publish an event to be handled locally. Kafka will not receive this event,
+    /// and the error will be sent straight back to the caller
+    pub async fn publish_local<T: Event>(&self, event: &T) -> anyhow::Result<()> {
+        let ser = event.serialize()?;
+
+        let handler = self.get_handler(type_name!(T)).await?;
+        handler.execute(ser).await?;
 
         Ok(())
     }
@@ -123,7 +137,7 @@ impl<'a> Orchestrator<'a> {
 
     /// Fetch any incoming events and dispatch any event handlers.
     pub async fn process(&mut self) -> anyhow::Result<()> {
-        let rx = self.message_receiver.recv();
+        let rx = self.event_receiver.recv();
         let sleep = tokio::time::sleep(Duration::from_millis(500));
         let mut futs = self.futures.lock().await;
 
@@ -137,23 +151,22 @@ impl<'a> Orchestrator<'a> {
                 info!("Slept for 500 millis");
                 // TODO: send all the batched messages
             }
-            Some(res) = futs.next() => {
-                info!("Advanced future: {:#?}", res);
+            Some(Err(e)) = futs.next() => {
+                error!(error = ?e, "Event handler returned an error");
             }
         }
 
         drop(futs);
 
-        let message_sets = self.message_consumer.lock().await.poll()?;
+        let message_sets = self.kafka_consumer.lock().await.poll()?;
 
         for set in message_sets.iter() {
             let topic = set.topic();
-            let event_handlers = self.event_handlers.read().await;
-            let handler = match event_handlers.get(topic) {
-                Some(handler) => handler,
-                None => {
-                    info!("No handler found for topic \"{}\"", topic);
-                    continue;
+            let handler = match self.get_handler(topic).await {
+                Ok(h) => h,
+                Err(e) => {
+                    error!(topic = ?topic, "No event handler found");
+                    return Err(e);
                 }
             };
 
@@ -176,20 +189,34 @@ impl<'a> Orchestrator<'a> {
     }
 
     async fn send_message(&self, rec: &RecordType<'a>) -> anyhow::Result<()> {
-        self.message_producer
+        self.kafka_producer
             .lock()
             .await
             .send(rec)
             .map_err(|e| anyhow!(e))
     }
 
+    async fn get_handler(
+        &self,
+        topic_name: &str,
+    ) -> anyhow::Result<Arc<Box<dyn ErasedEventHandler + Send + Sync>>> {
+        let event_handlers = self.event_handlers.read().await;
+        let handler = match event_handlers.get(topic_name) {
+            Some(handler) => handler.value().clone(),
+            None => {
+                return Err(anyhow!("No handler found for topic \"{}\"", topic_name));
+            }
+        };
+        Ok(handler)
+    }
+
     /// Publish all messages and advance all futures. This will also close the bus for messages,
     /// so the orchestrator may no longer publish any events
     pub async fn cleanup(&mut self) -> anyhow::Result<()> {
-        self.message_receiver.close();
+        self.event_receiver.close();
 
         let mut futs = self.futures.lock().await;
-        for msg in self.message_receiver.recv().await {
+        for msg in self.event_receiver.recv().await {
             // If we do have an event handler for this, then execute it.
             if let Some(handler) = self.event_handlers.read().await.get(msg.topic) {
                 let handler = handler.clone();
@@ -406,7 +433,7 @@ mod tests {
 
         async {
             let orchestrator = Arc::new(RwLock::new(
-                Orchestrator::new(vec!["kafka:9092".to_string()]).unwrap(),
+                EventOrchestrator::new(vec!["kafka:9092".to_string()]).unwrap(),
             ));
 
             let handler = TestHandler::new();
