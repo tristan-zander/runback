@@ -13,7 +13,7 @@ use kafka::{
 use sea_orm::prelude::Uuid;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{
-    mpsc::{Receiver, Sender},
+    mpsc::{error::SendError, Receiver, Sender},
     Mutex, RwLock,
 };
 
@@ -24,6 +24,16 @@ macro_rules! type_name {
 }
 
 type RecordType<'a> = Record<'a, &'a [u8], &'a [u8]>;
+
+#[derive(Error, Debug)]
+pub enum EventingError {
+    #[error(
+        "KafkaClient must receieve a non-zero list of hosts to listen on. Actual length: {0}."
+    )]
+    NoHostSpecified(usize),
+    #[error("Could not publish event to message bus.")]
+    CouldNotPubilsh,
+}
 
 const MESSAGE_BUF_LEN: usize = 128;
 
@@ -41,9 +51,7 @@ pub struct EventOrchestrator<'a> {
 impl<'a> EventOrchestrator<'a> {
     pub fn new(hosts: Vec<String>) -> anyhow::Result<Self> {
         if hosts.len() == 0 {
-            return Err(anyhow!(
-                "KafkaClient must receive a non-zero list of hosts to listen on."
-            ));
+            return Err(anyhow!(EventingError::NoHostSpecified(hosts.len())));
         }
 
         let id = Uuid::new_v4().to_string();
@@ -78,26 +86,27 @@ impl<'a> EventOrchestrator<'a> {
     pub async fn publish<T: Event>(&self, event: &T) -> anyhow::Result<()> {
         let ser = event.serialize()?;
 
-        let res = self
-            .event_sender
+        let uuid = Uuid::new_v4();
+        self.event_sender
             .send(Record::from_key_value(
                 type_name!(T),
-                Box::leak(Box::new(Uuid::new_v4().as_bytes().to_owned())),
+                Box::leak(Box::new(uuid.as_bytes().to_owned())),
                 // SAFETY: I already checked that `ser` is Some() before this call
                 Box::leak(ser),
             ))
-            .await;
+            .await
+            .map_err(|_| anyhow!(EventingError::CouldNotPubilsh))?;
 
-        if let Err(e) = res {
-            error!(key = ?String::from_utf8_lossy(e.0.key),
-                value = ?String::from_utf8_lossy(e.0.value),
-                "Failed to publish record to message bus"
-            );
-            return Err(anyhow!(
-                "Failed to publish record: {}",
-                String::from_utf8_lossy(e.0.key)
-            ));
-        }
+        // if let Err(e) = res {
+        //     let record = e.0;
+        //     error!(key = ?String::from_utf8_lossy(e.0.key),
+        //         value = ?String::from_utf8_lossy(e.0.value),
+        //         "Failed to publish record to message bus"
+        //     );
+        //     return Err(anyhow!(EventingError::CouldNotPubilsh {
+        //         source: e
+        //     }));
+        // }
 
         Ok(())
     }
