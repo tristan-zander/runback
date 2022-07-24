@@ -1,35 +1,41 @@
 pub mod application_commands;
 pub mod panels;
 
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{hash_map::DefaultHasher, HashMap},
+    hash::{Hash, Hasher},
+    sync::Arc,
+};
 
 use dashmap::DashMap;
-use entity::sea_orm::DatabaseConnection;
+use entity::sea_orm::{prelude::Uuid, DatabaseConnection};
 
+use futures::future::BoxFuture;
 use tracing::Level;
 use twilight_cache_inmemory::InMemoryCache;
 use twilight_gateway::Shard;
 use twilight_model::{
-    gateway::payload::incoming::InteractionCreate,
+    application::command::Command, gateway::payload::incoming::InteractionCreate,
 };
 use twilight_standby::Standby;
 
-use crate::{
-    error::RunbackError,
-    interactions::application_commands::{lfg::LfgCommandHandler, InteractionData},
+use crate::interactions::application_commands::{
+    lfg::LfgCommandHandler, ApplicationCommandUtilities, InteractionData,
 };
 
 use self::application_commands::{
     admin::admin_handler::AdminCommandHandler, eula::EulaCommandHandler,
-    matchmaking::MatchmakingCommandHandler, ApplicationCommandHandler, ApplicationCommandHandlers,
-    CommandHandlerType, PingCommandHandler,
+    matchmaking::MatchmakingCommandHandler, ApplicationCommandHandler, CommandGroupDescriptor,
+    HandlerType, PingCommandHandler,
 };
 
 pub struct InteractionHandler {
-    application_command_handlers: ApplicationCommandHandlers,
-    /// The name of the command, then the Command Handler associated with that command.
-    /// ApplicationCommandHandlers with any SubCommands or SubCommandGroups will also have this structure
-    command_map: HashMap<String, Box<dyn ApplicationCommandHandler + Sync + Send + 'static>>,
+    utils: Arc<ApplicationCommandUtilities>,
+    command_map: HashMap<u64, HandlerType>,
+    #[allow(unused)]
+    commands: Vec<Command>,
+    #[allow(unused)]
+    command_groups: Vec<CommandGroupDescriptor>,
 }
 
 impl InteractionHandler {
@@ -37,72 +43,82 @@ impl InteractionHandler {
         db: Arc<Box<DatabaseConnection>>,
         cache: Arc<InMemoryCache>,
         standby: Arc<Standby>,
-    ) -> Result<Self, RunbackError> {
-        let application_command_handlers =
-            ApplicationCommandHandlers::new(db, cache, standby).await?;
-
-        let mut command_map = HashMap::new();
-
+    ) -> anyhow::Result<Self> {
+        let utils = Arc::new(ApplicationCommandUtilities::new(db, cache, standby).await?);
         let lfg_sessions = Arc::new(DashMap::new());
 
         event!(Level::INFO, "Registering top-level command handlers");
 
         let top_level_handlers: Vec<Box<dyn ApplicationCommandHandler + Send + Sync>> = vec![
             Box::new(PingCommandHandler {
-                utils: application_command_handlers.utils.clone(),
+                utils: utils.clone(),
             }),
-            Box::new(AdminCommandHandler::new(
-                application_command_handlers.utils.clone(),
-            )),
+            Box::new(AdminCommandHandler::new(utils.clone())),
             Box::new(MatchmakingCommandHandler {}),
-            Box::new(EulaCommandHandler::new(
-                application_command_handlers.utils.clone(),
-            )),
+            Box::new(EulaCommandHandler::new(utils.clone())),
             Box::new(LfgCommandHandler {
-                utils: application_command_handlers.utils.clone(),
+                utils: utils.clone(),
                 lfg_sessions,
             }),
         ];
 
-        let mut command_models = Vec::new();
+        let mut command_map = HashMap::new();
 
-        for handler in top_level_handlers {
-            if let CommandHandlerType::TopLevel(ref mut c) = handler.register() {
-                c.guild_id = crate::CONFIG.debug_guild_id;
+        let mut command_groups = Vec::with_capacity(top_level_handlers.len());
 
-                command_models.push(c.to_owned());
+        let commands = top_level_handlers
+            .iter()
+            .flat_map(|handler| {
+                let command_group = handler.register();
+                command_groups.push(command_group.to_owned());
 
-                command_map.insert(c.name.to_owned(), handler);
+                command_group
+                    .commands
+                    .into_iter()
+                    .map(|grp| {
+                        let comm = grp.command.to_owned();
 
-                debug!(name = %c.name, "Registered application command handler");
-            }
-        }
+                        if let Some(h) = grp.handler {
+                            command_map.insert(Self::hash_command_name(comm.name.as_str()), h);
+                        }
 
-        let _res = application_command_handlers
-            .utils
+                        comm
+                    })
+                    .collect::<Vec<Command>>()
+            })
+            .collect::<Vec<_>>();
+
+        let _res = utils
             .http_client
-            .interaction(application_command_handlers.utils.application_id)
-            .set_guild_commands(
-                crate::CONFIG.debug_guild_id.unwrap(),
-                command_models.as_slice(),
-            )
+            .interaction(utils.application_id)
+            .set_guild_commands(crate::CONFIG.debug_guild_id.unwrap(), commands.as_slice())
             .exec()
             .await?
             .models()
             .await?;
 
         Ok(Self {
-            application_command_handlers,
             command_map,
+            commands,
+            command_groups,
+            utils,
         })
     }
 
+    fn hash_command_name(name: &str) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        name.hash(&mut hasher);
+        let res = hasher.finish();
+        trace!(name = ?name, hashed = ?res, "Hashed command name");
+        res
+    }
+
     #[tracing::instrument(skip_all)]
-    pub async fn handle_interaction<'shard>(
+    pub fn handle_interaction<'shard>(
         &self,
         interaction: InteractionCreate,
         _shard: &'shard Shard,
-    ) -> Result<(), RunbackError> {
+    ) -> anyhow::Result<BoxFuture<'static, anyhow::Result<()>>> {
         event!(tracing::Level::DEBUG, "Received interaction");
 
         // TODO: Send a deferred message response, followup on it later
@@ -114,42 +130,44 @@ impl InteractionHandler {
                 // self.application_command_handlers
                 //     .on_command_receive(command.as_ref())
                 //     .await?;
-                let name: &str = command.data.name.as_ref();
-
-                if let Some(handler) = self.command_map.get(name) {
-                    handler
-                        .execute(&InteractionData {
-                            command: command.as_ref(),
-                        })
-                        .await
-                        .map_err(|e| RunbackError {
-                            message: "Application Command error".to_string(),
-                            inner: Some(e.into()),
-                        })?;
-                } else {
-                    error!("No command found");
-                    return Err(RunbackError {
-                        message: "No such command found".into(),
-                        inner: None,
+                if let Some(handler) = self
+                    .command_map
+                    .get(&Self::hash_command_name(command.data.name.as_str()))
+                {
+                    let data = Box::new(InteractionData {
+                        command: *command.to_owned(),
+                        id: Uuid::new_v4(),
                     });
+                    let fut = (handler)(self.utils.clone(), data);
+                    // self.executing_futures.push(fut);
+                    return Ok(fut);
+                    // handler
+                    //     .execute(InteractionData {
+                    //         command: *command.to_owned(),
+                    //         id: Uuid::new_v4(),
+                    //     })
+                    //     .await
+                    //     .map_err(|e| RunbackError {
+                    //         message: "Application Command error".to_string(),
+                    //         inner: Some(e.into()),
+                    //     })?;
+                } else {
+                    error!(name = ?command.data.name,"No command handler found");
+                    return Err(anyhow!("No such command handler found"));
                 }
             }
             // twilight_model::application::interaction::Interaction::ApplicationCommandAutocomplete(
             //     _,
             // ) => todo!(),
-            twilight_model::application::interaction::Interaction::MessageComponent(message) => {
-                self.application_command_handlers
-                    .on_message_component_event(message.as_ref())
-                    .await?;
+            twilight_model::application::interaction::Interaction::MessageComponent(_message) => {
+                debug!("Received message component")
             }
-            twilight_model::application::interaction::Interaction::ModalSubmit(modal) => {
+            twilight_model::application::interaction::Interaction::ModalSubmit(_modal) => {
                 debug!("Received modal");
-                self.application_command_handlers
-                    .on_modal_submit(modal.as_ref())
-                    .await?;
             }
             _ => {
                 debug!(interaction = %format!("{:?}", interaction), "Unhandled interaction");
+                return Err(anyhow!("Interaction was unmatched"));
             }
         }
 
@@ -158,7 +176,7 @@ impl InteractionHandler {
         //     error!(error = %e, "Unhandled interaction error");
         // }
 
-        debug!("Ended interaction response.");
-        Ok(())
+        trace!("Ended interaction response.");
+        return Err(anyhow!("Interaction was unmatched"));
     }
 }

@@ -7,6 +7,7 @@ pub struct LobbyPanel<'a> {
 }
 
 impl<'a> LobbyPanel<'a> {
+    #[allow(unused)]
     pub fn create(&self) -> InteractionResponseDataBuilder {
         let mut embed = EmbedBuilder::new()
             .title("Lobbies")

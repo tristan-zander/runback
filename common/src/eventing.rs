@@ -22,9 +22,8 @@ impl Orchestrator {
         if let Some(mut handlers) = self.handlers.get_mut(&type_id) {
             handlers.push(boxed as Box<dyn ErasedEventHandler + Send + Sync>);
         } else {
-            self.handlers
-                .insert(type_id, vec![boxed]);
-                // .ok_or(anyhow!("Could not insert handler into map"))?;
+            self.handlers.insert(type_id, vec![boxed]);
+            // .ok_or(anyhow!("Could not insert handler into map"))?;
         }
 
         Ok(())

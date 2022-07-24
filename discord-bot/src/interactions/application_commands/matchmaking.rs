@@ -1,49 +1,75 @@
-use twilight_model::{
-    application::command::{Command, CommandType},
-    id::{marker::GuildMarker, Id},
-};
+use twilight_model::application::command::{BaseCommandOptionData, CommandOption, CommandType};
 use twilight_util::builder::command::{CommandBuilder, SubCommandBuilder};
 
-use super::{ApplicationCommandHandler, CommandHandlerType};
+use crate::handler;
+
+use super::{
+    ApplicationCommandHandler, ApplicationCommandUtilities, CommandDescriptor,
+    CommandGroupDescriptor, InteractionData,
+};
+
+use std::sync::Arc;
 
 pub struct MatchmakingCommandHandler;
 
 #[async_trait]
 impl ApplicationCommandHandler for MatchmakingCommandHandler {
-    fn register(&self) -> CommandHandlerType {
+    fn register(&self) -> CommandGroupDescriptor {
         let builder = CommandBuilder::new(
-            self.name(),
-            "Matchmaking commands".into(),
+            "matchmaking".to_string(),
+            "Matchmaking commands".to_string(),
             CommandType::ChatInput,
         )
         .option(
-            SubCommandBuilder::new("show-matches".into(), "Show the matchmaking menu".into())
-                .build(),
-        )
-        .option(
             SubCommandBuilder::new(
-                "settings".into(),
-                "View and update settings such as default character".into(),
+                "play-against".to_string(),
+                "Start a match with an opponent".to_string(),
             )
-            .build(),
-        )
-        .option(
-            SubCommandBuilder::new(
-                "end-session".into(),
-                "Finish your matchmaking session".into(),
-            )
+            .option(CommandOption::User(BaseCommandOptionData {
+                name: "opponent".to_string(),
+                description: "The user that you wish to play against".to_string(),
+                description_localizations: None,
+                name_localizations: None,
+                required: true,
+            }))
             .build(),
         );
+        // .option(
+        //     SubCommandBuilder::new("show-matches".into(), "Show the matchmaking menu".into())
+        //         .build(),
+        // )
+        // .option(
+        //     SubCommandBuilder::new(
+        //         "settings".into(),
+        //         "View and update settings such as default character".into(),
+        //     )
+        //     .build(),
+        // )
+        // .option(
+        //     SubCommandBuilder::new(
+        //         "end-session".into(),
+        //         "Finish your matchmaking session".into(),
+        //     )
+        //     .build(),
+        // );
 
-        let comm = builder.build();
-        return CommandHandlerType::TopLevel(comm);
+        let command = builder.build();
+        CommandGroupDescriptor {
+            name: "matchmaking",
+            description: "Commands that are related to matchmaking",
+            commands: Box::new([CommandDescriptor {
+                command,
+                handler: Some(handler!(MatchmakingCommandHandler::execute)),
+            }]),
+        }
     }
+}
 
-    async fn execute(&self, data: &super::InteractionData) -> anyhow::Result<()> {
-        unimplemented!()
-    }
-
-    fn name(&self) -> String {
-        "matchmaking".into()
+impl MatchmakingCommandHandler {
+    async fn execute(
+        _utils: Arc<ApplicationCommandUtilities>,
+        _data: Box<InteractionData>,
+    ) -> anyhow::Result<()> {
+        todo!()
     }
 }

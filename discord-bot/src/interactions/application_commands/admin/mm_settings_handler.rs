@@ -7,26 +7,16 @@ use twilight_model::{
 };
 use twilight_util::builder::InteractionResponseDataBuilder;
 
-use crate::interactions::application_commands::{
-    ApplicationCommandHandler, ApplicationCommandUtilities, CommandHandlerType, InteractionData,
-};
+use crate::interactions::application_commands::{ApplicationCommandUtilities, InteractionData};
 
-pub struct MatchmakingSettingsHandler {
-    pub utils: Arc<ApplicationCommandUtilities>,
-}
+pub struct MatchmakingSettingsHandler;
 
-#[async_trait]
-impl ApplicationCommandHandler for MatchmakingSettingsHandler {
-    fn name(&self) -> String {
-        "matchmaking-settings".to_string()
-    }
-
-    fn register(&self) -> CommandHandlerType {
-        CommandHandlerType::SubCommand
-    }
-
-    async fn execute(&self, data: &InteractionData) -> anyhow::Result<()> {
-        let command = data.command;
+impl MatchmakingSettingsHandler {
+    pub async fn execute(
+        utils: Arc<ApplicationCommandUtilities>,
+        data: Box<InteractionData>,
+    ) -> anyhow::Result<()> {
+        let command = &data.command;
         // VERIFY: Is it possible that we can send the information of other guilds here?
         let guild_id = match command.guild_id {
             Some(id) => id,
@@ -35,8 +25,7 @@ impl ApplicationCommandHandler for MatchmakingSettingsHandler {
             }
         };
 
-        let channels = self
-            .utils
+        let channels = utils
             .http_client
             .guild_channels(guild_id)
             .exec()
@@ -91,8 +80,7 @@ impl ApplicationCommandHandler for MatchmakingSettingsHandler {
             ),
         };
 
-        Ok(self
-            .utils
+        Ok(utils
             .send_message(command, &message)
             .await
             .map_err(|e| anyhow!("Could not send message: {}", e))?)

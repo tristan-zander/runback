@@ -7,7 +7,7 @@ extern crate async_trait;
 
 pub mod auth;
 pub mod config;
-pub mod logging;
 pub mod eventing;
+pub mod logging;
 
 // TODO: Write common logger setup

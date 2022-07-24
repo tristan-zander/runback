@@ -1,23 +1,14 @@
-use std::{collections::HashMap, error::Error, sync::Arc};
+use std::{collections::HashMap, sync::Arc};
 
 use chrono::Utc;
 use entity::sea_orm::{prelude::Uuid, ActiveModelTrait, EntityTrait, IntoActiveModel, Set};
-use futures::StreamExt;
-use twilight_gateway::Event;
 use twilight_model::{
     application::{
-        command::{Command, CommandType},
-        component::{
-            button::ButtonStyle, select_menu::SelectMenuOption, text_input::TextInputStyle,
-            ActionRow, Button, Component, SelectMenu, TextInput,
-        },
-        interaction::{
-            modal::{ModalInteractionData, ModalSubmitInteraction},
-            ApplicationCommand as DiscordApplicationCommand, MessageComponentInteraction,
-        },
+        command::CommandType,
+        component::{text_input::TextInputStyle, ActionRow, Component, TextInput},
+        interaction::{modal::ModalSubmitInteraction, MessageComponentInteraction},
     },
     channel::{message::MessageFlags, Channel, ChannelType},
-    gateway::payload::incoming::InteractionCreate,
     http::interaction::{InteractionResponse, InteractionResponseType},
     id::{
         marker::{ChannelMarker, GuildMarker},
@@ -26,14 +17,14 @@ use twilight_model::{
 };
 use twilight_util::builder::{
     command::{CommandBuilder, SubCommandBuilder},
-    embed::EmbedBuilder,
     InteractionResponseDataBuilder,
 };
 
 use crate::{
+    handler,
     interactions::{
-        application_commands::{CommandHandlerType, InteractionData},
-        panels::admin_lobby::{AdminLobbiesPanel, AdminLobbiesSinglePanel, MatchmakingPanel},
+        application_commands::{CommandDescriptor, CommandGroupDescriptor, InteractionData},
+        panels::admin_lobby::{AdminLobbiesSinglePanel, MatchmakingPanel},
     },
     RunbackError,
 };
@@ -48,16 +39,11 @@ use super::{
 
 pub struct AdminCommandHandler {
     pub utils: Arc<ApplicationCommandUtilities>,
-    sub_commands: HashMap<String, Box<dyn ApplicationCommandHandler + Send + Sync + 'static>>,
 }
 
 #[async_trait]
 impl ApplicationCommandHandler for AdminCommandHandler {
-    fn name(&self) -> String {
-        todo!()
-    }
-
-    fn register(&self) -> CommandHandlerType {
+    fn register(&self) -> CommandGroupDescriptor {
         let builder = CommandBuilder::new(
             "admin".into(),
             "Admin configuration and management settings".into(),
@@ -72,11 +58,27 @@ impl ApplicationCommandHandler for AdminCommandHandler {
             "Shows the matchmaking settings panel".into(),
         ));
 
-        let comm = builder.build();
-        return CommandHandlerType::TopLevel(comm);
+        let command = builder.build();
+        CommandGroupDescriptor {
+            name: "Admin",
+            description: "Tools for admins",
+            commands: Box::new([CommandDescriptor {
+                command,
+                handler: Some(handler!(Self::execute)),
+            }]),
+        }
+    }
+}
+
+impl AdminCommandHandler {
+    pub fn new(utils: Arc<ApplicationCommandUtilities>) -> Self {
+        Self { utils }
     }
 
-    async fn execute(&self, data: &InteractionData) -> anyhow::Result<()> {
+    async fn execute(
+        utils: Arc<ApplicationCommandUtilities>,
+        data: Box<InteractionData>,
+    ) -> anyhow::Result<()> {
         let options = &data.command.data.options;
 
         if options.len() != 1 {
@@ -85,69 +87,29 @@ impl ApplicationCommandHandler for AdminCommandHandler {
 
         let option = &options[0];
 
-        match self.sub_commands.get(&option.name) {
-            Some(ref c) => {
-                c.execute(data).await?;
+        let sub_command_name = options
+            .get(0)
+            .ok_or_else(|| anyhow!("Could not get first admin subcommand"))?
+            .name
+            .as_str();
+        match sub_command_name {
+            "matchmaking-settings" => {
+                MatchmakingSettingsHandler::execute(utils, data).await?;
+            }
+            "matchmaking-panels" => {
+                MatchmakingPanelsHandler::execute(utils, data).await?;
             }
             _ => {
-                return Err(anyhow!(
-                    "No subcommand found with the name {}",
-                    &option.name
-                ))
+                debug!(name = %option.name.as_str(), "Unknown admin subcommand option");
+                return Err(anyhow!("Unknown admin subcommand option"));
             }
         }
-
-        // There should only be one subcommand option, but map through them anyways
-        // for option in options {
-        //     match option.name.as_str() {
-        //         "matchmaking-settings" => {
-        //             self.send_matchamking_settings(data.command)
-        //                 .await
-        //                 .map_err(|e| anyhow!("Error with mm settings: {}", e))?;
-        //         }
-        //         "matchmaking-panels" => {
-        //             self.on_mm_panels_command_received(data.command)
-        //                 .await
-        //                 .map_err(|e| anyhow!("Error with mm panel: {}", e))?;
-        //         }
-        //         _ => {
-        //             debug!(name = %option.name.as_str(), "Unknown admin subcommand option");
-        //             return Err(anyhow!("Unknown admin subcommand option"));
-        //         }
-        //     }
-        // }
 
         Ok(())
     }
-}
 
-impl AdminCommandHandler {
-    pub fn new(command_utils: Arc<ApplicationCommandUtilities>) -> Self {
-        let mut admin_handler = Self {
-            utils: command_utils,
-            sub_commands: HashMap::new(),
-        };
-
-        let sub_handlers: Vec<Box<dyn ApplicationCommandHandler + Send + Sync + 'static>> = vec![
-            Box::new(MatchmakingSettingsHandler {
-                utils: admin_handler.utils.clone(),
-            }),
-            Box::new(MatchmakingPanelsHandler {
-                utils: admin_handler.utils.clone(),
-            }),
-        ];
-
-        for handler in sub_handlers {
-            if let CommandHandlerType::SubCommand = handler.register() {
-                let name = handler.name();
-                admin_handler.sub_commands.insert(name.clone(), handler);
-                debug!(name = %name, "Registered admin sub-command handler");
-            }
-        }
-
-        admin_handler
-    }
-
+    #[deprecated]
+    #[allow(dead_code)]
     pub async fn on_message_component_event(
         &self,
         id_parts: Vec<&str>,
@@ -367,7 +329,7 @@ impl AdminCommandHandler {
         };
 
         // TODO: Produce a Kafka message, saying that this guild's settings have been updated
-        let message = InteractionResponse { kind: InteractionResponseType::UpdateMessage, data: Some(
+        let _message = InteractionResponse { kind: InteractionResponseType::UpdateMessage, data: Some(
             InteractionResponseDataBuilder::new()
                 .flags(MessageFlags::EPHEMERAL)
                 .content("Successfully set the matchmaking channel. Please wait a few moments for changes to take effect.".into())
