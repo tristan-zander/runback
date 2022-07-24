@@ -93,7 +93,7 @@ async fn main() -> Result<()> {
         cluster_spawn.up().await;
     });
 
-    let mut event_futures = FuturesUnordered::new();
+    let mut executing_futures = FuturesUnordered::new();
 
     let mut sighup = signal(SignalKind::hangup())?;
     let mut sigint = signal(SignalKind::interrupt())?;
@@ -131,18 +131,20 @@ async fn main() -> Result<()> {
                         }
                         Event::InteractionCreate(i) => {
                             let interaction_ref = interactions.clone();
-                            let handle = tokio::spawn(async move {
-                                let shard = cluster_ref.shard(shard_id).unwrap();
-                                let res = interaction_ref.handle_interaction(i, shard).await;
-                                if let Err(e) = res {
+                            let shard = cluster_ref.shard(shard_id).unwrap();
+                            let res = interaction_ref.handle_interaction(i, shard);
+                            match res {
+                                Ok(fut) => {
+                                    executing_futures.push(fut);
+                                },
+                                Err(e) => {
                                     error!(error = %e, "Error occurred while handling interactions.");
                                     debug!(debug_error = %format!("{:?}", e), "Error occurred while handling interactions.");
-                                }
-                            });
-                            event_futures.push(handle);
+                                },
+                            }
                         }
                         Event::GatewayHeartbeatAck => {
-                            // ignore
+                            trace!("Gateway acked heartbeat");
                         }
                         _ => debug!(kind = %format!("{:?}", event.kind()), "Unhandled event"),
                     }
@@ -150,10 +152,10 @@ async fn main() -> Result<()> {
                     break;
                 }
             }
-            result = event_futures.next() => {
+            result = executing_futures.next() => {
                 if let Some(res) = result {
                     if let Err(e) = res {
-                        error!(error = ?e, "Event handler errored out");
+                        error!(error = ?e, "Application handler errored out");
                     }
                 }
             }

@@ -4,8 +4,6 @@ use entity::{
     sea_orm::{ColumnTrait, EntityTrait, QueryFilter},
     IdWrapper,
 };
-use futures::StreamExt;
-use twilight_gateway::Event;
 use twilight_model::{
     channel::{Channel, ChannelType},
     http::interaction::{InteractionResponse, InteractionResponseType},
@@ -13,28 +11,18 @@ use twilight_model::{
 };
 
 use crate::interactions::{
-    application_commands::{
-        ApplicationCommandHandler, ApplicationCommandUtilities, CommandHandlerType, InteractionData,
-    },
+    application_commands::{ApplicationCommandUtilities, InteractionData},
     panels::admin_lobby::AdminLobbiesPanel,
 };
 
-pub struct MatchmakingPanelsHandler {
-    pub utils: Arc<ApplicationCommandUtilities>,
-}
+pub struct MatchmakingPanelsHandler;
 
-#[async_trait]
-impl ApplicationCommandHandler for MatchmakingPanelsHandler {
-    fn name(&self) -> String {
-        "matchmaking-panels".into()
-    }
-
-    fn register(&self) -> CommandHandlerType {
-        CommandHandlerType::SubCommand
-    }
-
-    async fn execute(&self, data: &InteractionData) -> anyhow::Result<()> {
-        let command = data.command;
+impl MatchmakingPanelsHandler {
+    pub async fn execute(
+        utils: Arc<ApplicationCommandUtilities>,
+        data: Box<InteractionData>,
+    ) -> anyhow::Result<()> {
+        let command = &data.command;
         let guild_id = match command.guild_id {
             Some(id) => id,
             None => {
@@ -42,8 +30,7 @@ impl ApplicationCommandHandler for MatchmakingPanelsHandler {
             }
         };
 
-        let channels = self
-            .utils
+        let channels = utils
             .http_client
             .guild_channels(guild_id)
             .exec()
@@ -68,7 +55,7 @@ impl ApplicationCommandHandler for MatchmakingPanelsHandler {
                 entity::matchmaking::panel::Column::GuildId
                     .eq(Into::<IdWrapper<GuildMarker>>::into(guild_id)),
             )
-            .all(self.utils.db_ref())
+            .all(utils.db_ref())
             .await?;
 
         let panel = AdminLobbiesPanel {
@@ -84,7 +71,7 @@ impl ApplicationCommandHandler for MatchmakingPanelsHandler {
             data: Some(callback_data.build()),
         };
 
-        self.utils
+        utils
             .send_message(command, &message)
             .await
             .map_err(|e| anyhow!("Could not send message: {}", e))?;

@@ -3,18 +3,16 @@ pub mod eula;
 pub mod lfg;
 pub mod matchmaking;
 
-use std::sync::Arc;
+use std::{pin::Pin, sync::Arc};
 
-use entity::sea_orm::DatabaseConnection;
+use entity::sea_orm::{prelude::Uuid, DatabaseConnection};
+use futures::Future;
 use twilight_cache_inmemory::InMemoryCache;
 use twilight_http::Client as DiscordHttpClient;
 use twilight_model::{
     application::{
         command::{Command, CommandType},
-        interaction::{
-            modal::ModalSubmitInteraction, ApplicationCommand as DiscordApplicationCommand,
-            MessageComponentInteraction,
-        },
+        interaction::ApplicationCommand as DiscordApplicationCommand,
     },
     channel::message::MessageFlags,
     http::interaction::{InteractionResponse, InteractionResponseType},
@@ -29,6 +27,18 @@ use twilight_model::application::interaction::ApplicationCommand;
 
 use crate::error::RunbackError;
 
+#[macro_export]
+macro_rules! handler {
+    ($func:expr) => {
+        |a, d| Box::pin($func(a, d))
+    };
+}
+
+pub type HandlerType = fn(
+    Arc<ApplicationCommandUtilities>,
+    Box<InteractionData>,
+) -> Pin<Box<dyn Future<Output = anyhow::Result<()>> + Send + 'static>>;
+
 /// Contains any helper functions to help make writing application command handlers easier
 /// Make sure this is thread safe
 pub struct ApplicationCommandUtilities {
@@ -39,81 +49,12 @@ pub struct ApplicationCommandUtilities {
     pub standby: Arc<Standby>,
 }
 
-pub struct ApplicationCommandHandlers {
-    pub utils: Arc<ApplicationCommandUtilities>,
-}
-
-impl ApplicationCommandHandlers {
-    pub async fn new(
-        db: Arc<Box<DatabaseConnection>>,
-        cache: Arc<InMemoryCache>,
-        standby: Arc<Standby>,
-    ) -> Result<Self, RunbackError> {
-        let utilities = Arc::new(ApplicationCommandUtilities::new(db, cache, standby).await?);
-        Ok(Self {
-            utils: utilities.clone(),
-        })
-    }
-
-    pub async fn on_message_component_event(
-        &self,
-        message: &MessageComponentInteraction,
-    ) -> Result<(), RunbackError> {
-        debug!(message = %format!("{:?}", message), "TODO: handle message component interaction");
-
-        let custom_id = &message.data.custom_id;
-        let _component_type = message.data.component_type;
-
-        let id_parts = custom_id.split(':').collect::<Vec<_>>();
-        let namespace: &str = id_parts[0];
-
-        let _res = match namespace {
-            "admin" => {
-                // self.admin_command_handler
-                //     .on_message_component_event(id_parts, message)
-                //     .await?
-            }
-            _ => {
-                warn!(custom_id = %custom_id, "Unknown message component event")
-            }
-        };
-
-        Ok(())
-    }
-
-    #[tracing::instrument(skip_all)]
-    pub async fn on_modal_submit(
-        &self,
-        modal: &ModalSubmitInteraction,
-    ) -> Result<(), RunbackError> {
-        debug!(modal = %format!("{:?}", modal), "TODO: handle message component interaction");
-
-        let custom_id = modal.data.custom_id.as_str();
-
-        let id_parts = custom_id.split(':').collect::<Vec<_>>();
-        let namespace: &str = id_parts[0];
-
-        let _res = match namespace {
-            "admin" => {
-                // self.admin_command_handler
-                //     .on_modal_submit(id_parts, modal)
-                //     .await?
-            }
-            _ => {
-                warn!(custom_id = %custom_id, "Unknown message component event")
-            }
-        };
-
-        Ok(())
-    }
-}
-
 impl ApplicationCommandUtilities {
     pub async fn new(
         db: Arc<Box<DatabaseConnection>>,
         cache: Arc<InMemoryCache>,
         standby: Arc<Standby>,
-    ) -> Result<Self, RunbackError> {
+    ) -> anyhow::Result<Self> {
         let http_client = DiscordHttpClient::new(crate::CONFIG.token.clone());
         let application_id = {
             let response = http_client.current_user_application().exec().await?;
@@ -165,38 +106,47 @@ impl ApplicationCommandUtilities {
     }
 }
 
-#[non_exhaustive]
-pub enum CommandHandlerType {
-    TopLevel(Command),
-    SubCommand,
+/// Describes a group of commands. This is mainly used
+/// for structural purposes, and for the `/help` command
+#[derive(Debug, Clone)]
+pub struct CommandGroupDescriptor {
+    /// The name of the command group
+    pub name: &'static str,
+    /// The description of the command group
+    pub description: &'static str,
+    /// The commands that are releated to this group
+    pub commands: Box<[CommandDescriptor]>,
 }
 
-#[async_trait]
+/// Describes a single command. This is used for the `/help`
+/// command and to register the command with Discord
+#[derive(Debug, Clone)]
+pub struct CommandDescriptor {
+    pub command: Command,
+    // pub guild_id: Option<Id<GuildMarker>>
+    pub handler: Option<HandlerType>,
+}
+
 pub trait ApplicationCommandHandler {
-    fn name(&self) -> String;
+    fn register(&self) -> CommandGroupDescriptor;
 
-    fn register(&self) -> CommandHandlerType;
-
-    async fn execute(&self, data: &InteractionData) -> anyhow::Result<()>;
+    // async fn execute(&self, data: &InteractionData) -> anyhow::Result<()>;
 }
 
-pub struct InteractionData<'a> {
-    pub command: &'a ApplicationCommand,
+pub struct InteractionData {
+    pub command: ApplicationCommand,
+    pub id: Uuid,
+    // pub cancellation_token
 }
 
 pub struct PingCommandHandler {
     pub utils: Arc<ApplicationCommandUtilities>,
 }
 
-#[async_trait]
 impl ApplicationCommandHandler for PingCommandHandler {
-    fn name(&self) -> String {
-        "ping".into()
-    }
-
-    fn register(&self) -> CommandHandlerType {
-        let mut builder = CommandBuilder::new(
-            self.name(),
+    fn register(&self) -> CommandGroupDescriptor {
+        let builder = CommandBuilder::new(
+            "ping".to_string(),
             "Responds with pong".into(),
             CommandType::ChatInput,
         )
@@ -205,12 +155,24 @@ impl ApplicationCommandHandler for PingCommandHandler {
             "Send this text alongside the response".into(),
         ));
 
-        let comm = builder.build();
-        debug!(comm = %format!("{:?}", comm), "Created command");
-        return CommandHandlerType::TopLevel(comm);
+        let command = builder.build();
+        debug!(command = %format!("{:?}", command), "Created command");
+        return CommandGroupDescriptor {
+            name: "ping",
+            description: "Commands that relate to response time",
+            commands: Box::new([CommandDescriptor {
+                handler: Some(handler!(PingCommandHandler::execute)),
+                command,
+            }]),
+        };
     }
+}
 
-    async fn execute(&self, data: &InteractionData) -> anyhow::Result<()> {
+impl PingCommandHandler {
+    async fn execute(
+        utils: Arc<ApplicationCommandUtilities>,
+        data: Box<InteractionData>,
+    ) -> anyhow::Result<()> {
         let message = InteractionResponse {
             data: Some(
                 InteractionResponseDataBuilder::new()
@@ -230,10 +192,9 @@ impl ApplicationCommandHandler for PingCommandHandler {
             kind: InteractionResponseType::ChannelMessageWithSource,
         };
 
-        let _res = self
-            .utils
+        let _res = utils
             .http_client
-            .interaction(self.utils.application_id)
+            .interaction(utils.application_id)
             .create_response(data.command.id, data.command.token.as_str(), &message)
             .exec()
             .await?;

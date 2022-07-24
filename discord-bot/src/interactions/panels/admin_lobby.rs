@@ -98,12 +98,14 @@ impl<'a> AdminLobbiesPanel<'a> {
     }
 }
 
+#[allow(unused)]
 pub struct AdminLobbiesSinglePanel<'a> {
     pub panel: &'a entity::matchmaking::panel::Model,
     pub text_channels: &'a [Channel],
 }
 
 impl<'a> AdminLobbiesSinglePanel<'a> {
+    #[allow(unused)]
     pub fn create(&self) -> InteractionResponseDataBuilder {
         let game = self.panel.game.clone();
         let desc = self.panel.comment.clone();
@@ -121,6 +123,7 @@ impl<'a> AdminLobbiesSinglePanel<'a> {
             .components(self.components())
     }
 
+    #[allow(unused)]
     pub fn components(&self) -> Vec<Component> {
         vec![
             Component::ActionRow(ActionRow {
@@ -205,6 +208,7 @@ impl<'a> AdminLobbiesSinglePanel<'a> {
     }
 }
 
+#[allow(unused)]
 pub struct MatchmakingPanel<'a> {
     pub model: &'a entity::matchmaking::panel::Model,
 
@@ -215,12 +219,14 @@ pub struct MatchmakingPanel<'a> {
 }
 
 impl<'a> MatchmakingPanel<'a> {
+    #[allow(unused)]
     pub fn create(&self) -> InteractionResponseDataBuilder {
         InteractionResponseDataBuilder::new()
             .components(self.components())
             .embeds([self.embed()])
     }
 
+    #[allow(unused)]
     pub fn components(&self) -> Vec<Component> {
         vec![
             Component::ActionRow(ActionRow {
@@ -256,6 +262,7 @@ impl<'a> MatchmakingPanel<'a> {
         ]
     }
 
+    #[allow(unused)]
     pub fn embed(&self) -> Embed {
         let mut builder = EmbedBuilder::new();
 
