@@ -25,7 +25,7 @@ use twilight_standby::Standby;
 
 use twilight_model::gateway::event::Event;
 
-use crate::interactions::InteractionHandler;
+use crate::interactions::InteractionProcessor;
 
 use anyhow::Result;
 
@@ -67,7 +67,7 @@ async fn main() -> Result<()> {
     let standby = Arc::new(Standby::new());
 
     let interactions = Arc::new(
-        InteractionHandler::init(db.clone(), cache.clone(), standby.clone())
+        InteractionProcessor::init(db.clone(), cache.clone(), standby.clone())
             .await
             .map_err(|e| -> anyhow::Error {
                 anyhow!("Could not create interaction command handler: {}", e)

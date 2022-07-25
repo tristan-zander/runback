@@ -1,11 +1,8 @@
 use twilight_model::application::command::{BaseCommandOptionData, CommandOption, CommandType};
 use twilight_util::builder::command::{CommandBuilder, SubCommandBuilder};
 
-use crate::handler;
-
 use super::{
-    ApplicationCommandHandler, ApplicationCommandUtilities, CommandDescriptor,
-    CommandGroupDescriptor, InteractionData,
+    ApplicationCommandUtilities, CommandGroupDescriptor, InteractionData, InteractionHandler,
 };
 
 use std::sync::Arc;
@@ -13,8 +10,8 @@ use std::sync::Arc;
 pub struct MatchmakingCommandHandler;
 
 #[async_trait]
-impl ApplicationCommandHandler for MatchmakingCommandHandler {
-    fn register(&self) -> CommandGroupDescriptor {
+impl InteractionHandler for MatchmakingCommandHandler {
+    fn describe(&self) -> CommandGroupDescriptor {
         let builder = CommandBuilder::new(
             "matchmaking".to_string(),
             "Matchmaking commands".to_string(),
@@ -57,19 +54,23 @@ impl ApplicationCommandHandler for MatchmakingCommandHandler {
         CommandGroupDescriptor {
             name: "matchmaking",
             description: "Commands that are related to matchmaking",
-            commands: Box::new([CommandDescriptor {
-                command,
-                handler: Some(handler!(MatchmakingCommandHandler::execute)),
-            }]),
+            commands: Box::new([command]),
         }
     }
-}
 
-impl MatchmakingCommandHandler {
-    async fn execute(
-        _utils: Arc<ApplicationCommandUtilities>,
-        _data: Box<InteractionData>,
-    ) -> anyhow::Result<()> {
-        todo!()
+    async fn process_command(&self, data: Box<InteractionData>) -> anyhow::Result<()> {
+        todo!("Command processor not initiated")
+    }
+
+    async fn process_autocomplete(&self, _data: Box<InteractionData>) -> anyhow::Result<()> {
+        unreachable!()
+    }
+
+    async fn process_modal(&self, _data: Box<InteractionData>) -> anyhow::Result<()> {
+        unreachable!()
+    }
+
+    async fn process_component(&self, _data: Box<InteractionData>) -> anyhow::Result<()> {
+        unreachable!()
     }
 }
