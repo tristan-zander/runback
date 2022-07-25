@@ -19,11 +19,9 @@ use twilight_model::{
 };
 use twilight_util::builder::{command::CommandBuilder, InteractionResponseDataBuilder};
 
-use crate::handler;
-
 use super::{
-    ApplicationCommandHandler, ApplicationCommandUtilities, CommandDescriptor,
-    CommandGroupDescriptor, InteractionData,
+    ApplicationCommandUtilities, CommandGroupDescriptor, InteractionData,
+    InteractionHandler,
 };
 
 pub struct LfgCommandHandler {
@@ -32,8 +30,8 @@ pub struct LfgCommandHandler {
 }
 
 #[async_trait]
-impl ApplicationCommandHandler for LfgCommandHandler {
-    fn register(&self) -> CommandGroupDescriptor {
+impl InteractionHandler for LfgCommandHandler {
+    fn describe(&self) -> CommandGroupDescriptor {
         let command = CommandBuilder::new(
             "lfg".to_string(),
             "Look for games in the server".to_string(),
@@ -112,19 +110,11 @@ impl ApplicationCommandHandler for LfgCommandHandler {
         CommandGroupDescriptor {
             name: "lfg",
             description: "Helps you find someone to play games with",
-            commands: Box::new([CommandDescriptor {
-                command,
-                handler: Some(handler!(LfgCommandHandler::execute)),
-            }]),
+            commands: Box::new([command]),
         }
     }
-}
 
-impl LfgCommandHandler {
-    async fn execute(
-        utils: Arc<ApplicationCommandUtilities>,
-        data: Box<InteractionData>,
-    ) -> anyhow::Result<()> {
+    async fn process_command(&self, data: Box<InteractionData>) -> anyhow::Result<()> {
         let guild_id = data
             .command
             .guild_id
@@ -142,11 +132,11 @@ impl LfgCommandHandler {
                 .unwrap_or(&"No nickname found".to_string())
         ))?;
 
-        let lfg_session = Self::get_user_lfg_session(utils.clone(), guild_id, user.id).await?;
+        let lfg_session = self.get_user_lfg_session(guild_id, user.id).await?;
 
         let message = if let Some(lfg) = lfg_session {
             // De-register the sessio
-            Self::delete_session(utils.clone(), lfg).await?;
+            self.delete_session(lfg).await?;
 
             InteractionResponse {
                 kind: InteractionResponseType::ChannelMessageWithSource,
@@ -166,7 +156,7 @@ impl LfgCommandHandler {
                 timeout_after: None,
             };
 
-            Self::add_new_session(utils.clone(), session).await?;
+            self.add_new_session(session).await?;
 
             InteractionResponse {
                 kind: InteractionResponseType::ChannelMessageWithSource,
@@ -178,34 +168,46 @@ impl LfgCommandHandler {
             }
         };
 
-        utils
+        self.utils
             .send_message(&data.command, &message)
             .await
             .map_err(|e| anyhow!("Could not send message to user: {}", e))?;
 
         Ok(())
     }
+
+    async fn process_autocomplete(&self, _data: Box<InteractionData>) -> anyhow::Result<()> {
+        unreachable!()
+    }
+
+    async fn process_modal(&self, _data: Box<InteractionData>) -> anyhow::Result<()> {
+        unreachable!()
+    }
+
+    async fn process_component(&self, _data: Box<InteractionData>) -> anyhow::Result<()> {
+        unreachable!()
+    }
+}
+
+impl LfgCommandHandler {
     async fn get_user_lfg_session(
-        utils: Arc<ApplicationCommandUtilities>,
+        &self,
         guild_id: Id<GuildMarker>,
         user_id: Id<UserMarker>,
     ) -> anyhow::Result<Option<entity::matchmaking::lfg::Model>> {
         let lfg_session = lfg::Entity::find()
             .filter(lfg::Column::UserId.eq(Into::<IdWrapper<_>>::into(user_id)))
             .filter(lfg::Column::GuildId.eq(Into::<IdWrapper<_>>::into(guild_id)))
-            .one(utils.db_ref())
+            .one(self.utils.db_ref())
             .await?;
 
         Ok(lfg_session)
     }
 
-    async fn add_new_session(
-        utils: Arc<ApplicationCommandUtilities>,
-        model: lfg::Model,
-    ) -> anyhow::Result<()> {
+    async fn add_new_session(&self, model: lfg::Model) -> anyhow::Result<()> {
         let boxed = Box::new(model);
         let _res = entity::matchmaking::lfg::Entity::insert(boxed.to_owned().into_active_model())
-            .exec(utils.db_ref())
+            .exec(self.utils.db_ref())
             .await?;
 
         // self.lfg_sessions.insert(res.last_insert_id, boxed);
@@ -213,12 +215,9 @@ impl LfgCommandHandler {
         Ok(())
     }
 
-    async fn delete_session(
-        utils: Arc<ApplicationCommandUtilities>,
-        model: lfg::Model,
-    ) -> anyhow::Result<()> {
+    async fn delete_session(&self, model: lfg::Model) -> anyhow::Result<()> {
         let res = entity::matchmaking::lfg::Entity::delete(model.to_owned().into_active_model())
-            .exec(utils.db_ref())
+            .exec(self.utils.db_ref())
             .await?;
 
         debug_assert!(res.rows_affected == 1);

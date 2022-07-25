@@ -10,23 +10,20 @@ use twilight_model::{
 use twilight_util::builder::command::{CommandBuilder, StringBuilder};
 use twilight_util::builder::InteractionResponseDataBuilder as CallbackDataBuilder;
 
-use crate::handler;
-
 use super::{
-    ApplicationCommandHandler, ApplicationCommandUtilities, CommandDescriptor,
-    CommandGroupDescriptor, InteractionData,
+    ApplicationCommandUtilities, CommandGroupDescriptor, InteractionData, InteractionHandler,
 };
 
 // Consider getting this path from an environment variable
 const EULA: &'static str = include_str!("../../../../EULA.md");
 
 pub struct EulaCommandHandler {
-    pub command_utils: Arc<ApplicationCommandUtilities>,
+    pub utils: Arc<ApplicationCommandUtilities>,
 }
 
 #[async_trait]
-impl ApplicationCommandHandler for EulaCommandHandler {
-    fn register(&self) -> CommandGroupDescriptor {
+impl InteractionHandler for EulaCommandHandler {
+    fn describe(&self) -> CommandGroupDescriptor {
         let builder = CommandBuilder::new(
             "eula".into(),
             "Show the EULA".into(),
@@ -45,23 +42,11 @@ impl ApplicationCommandHandler for EulaCommandHandler {
         CommandGroupDescriptor {
             name: "EULA",
             description: "Read and accept the EULA",
-            commands: Box::new([CommandDescriptor {
-                command,
-                handler: Some(handler!(Self::execute)),
-            }]),
+            commands: Box::new([command]),
         }
     }
-}
 
-impl EulaCommandHandler {
-    pub fn new(command_utils: Arc<ApplicationCommandUtilities>) -> Self {
-        Self { command_utils }
-    }
-
-    async fn execute(
-        utils: Arc<ApplicationCommandUtilities>,
-        data: Box<InteractionData>,
-    ) -> anyhow::Result<()> {
+    async fn process_command(&self, data: Box<InteractionData>) -> anyhow::Result<()> {
         let command = &data.command;
         debug!(options = %format!("{:?}", command.data.options));
 
@@ -77,7 +62,7 @@ impl EulaCommandHandler {
                 ),
                 kind: InteractionResponseType::ChannelMessageWithSource,
             };
-            utils
+            self.utils
                 .send_message(command, &message)
                 .await
                 .map_err(|e| anyhow!("Could not send message: {}", e))?;
@@ -99,7 +84,7 @@ impl EulaCommandHandler {
                         ),
                             kind: InteractionResponseType::ChannelMessageWithSource,
                     };
-                        utils
+                        self.utils
                             .send_message(command, &message)
                             .await
                             .map_err(|e| anyhow!("Could not send message: {}", e))?;
@@ -113,7 +98,7 @@ impl EulaCommandHandler {
                     }
 
                     let res = entity::matchmaking::Setting::find_by_id(gid.into())
-                        .one(utils.db_ref())
+                        .one(self.utils.db_ref())
                         .await?;
                     match res {
                         Some(existing_settings) => {
@@ -130,7 +115,7 @@ impl EulaCommandHandler {
                                     ),
                                     kind: InteractionResponseType::ChannelMessageWithSource,
                                 };
-                                utils
+                                self.utils
                                     .send_message(command, &message)
                                     .await
                                     .map_err(|e| anyhow!("Could not send message: {}", e))?;
@@ -138,7 +123,7 @@ impl EulaCommandHandler {
                             } else {
                                 let mut active = existing_settings.into_active_model();
                                 active.has_accepted_eula = Set(Some(Utc::now()));
-                                let db_ref = utils.db_ref();
+                                let db_ref = self.utils.db_ref();
                                 async move { active.update(db_ref).await }.await?;
                             }
                         }
@@ -150,7 +135,7 @@ impl EulaCommandHandler {
                                 ..Default::default()
                             };
 
-                            settings.insert(utils.db_ref()).await?;
+                            settings.insert(self.utils.db_ref()).await?;
                         }
                     };
 
@@ -160,7 +145,7 @@ impl EulaCommandHandler {
                                 .flags(MessageFlags::EPHEMERAL)
                                 .build(),
                         )};
-                    utils
+                    self.utils
                         .send_message(command, &message)
                         .await
                         .map_err(|e| anyhow!("Could not send message: {}", e))?;
@@ -179,11 +164,29 @@ impl EulaCommandHandler {
             ),
         };
 
-        utils
+        self.utils
             .send_message(command, &message)
             .await
             .map_err(|e| anyhow!("Could not send message: {}", e))?;
 
         Ok(())
+    }
+
+    async fn process_autocomplete(&self, _data: Box<InteractionData>) -> anyhow::Result<()> {
+        unreachable!()
+    }
+
+    async fn process_modal(&self, _data: Box<InteractionData>) -> anyhow::Result<()> {
+        unreachable!()
+    }
+
+    async fn process_component(&self, _data: Box<InteractionData>) -> anyhow::Result<()> {
+        unreachable!()
+    }
+}
+
+impl EulaCommandHandler {
+    pub fn new(utils: Arc<ApplicationCommandUtilities>) -> Self {
+        Self { utils }
     }
 }

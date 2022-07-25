@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
 use chrono::Utc;
 use entity::sea_orm::{prelude::Uuid, ActiveModelTrait, EntityTrait, IntoActiveModel, Set};
@@ -21,17 +21,14 @@ use twilight_util::builder::{
 };
 
 use crate::{
-    handler,
     interactions::{
-        application_commands::{CommandDescriptor, CommandGroupDescriptor, InteractionData},
+        application_commands::{CommandGroupDescriptor, InteractionData, InteractionHandler},
         panels::admin_lobby::{AdminLobbiesSinglePanel, MatchmakingPanel},
     },
     RunbackError,
 };
 
-use crate::interactions::application_commands::{
-    ApplicationCommandHandler, ApplicationCommandUtilities,
-};
+use crate::interactions::application_commands::ApplicationCommandUtilities;
 
 use super::{
     mm_panels_handler::MatchmakingPanelsHandler, mm_settings_handler::MatchmakingSettingsHandler,
@@ -42,8 +39,8 @@ pub struct AdminCommandHandler {
 }
 
 #[async_trait]
-impl ApplicationCommandHandler for AdminCommandHandler {
-    fn register(&self) -> CommandGroupDescriptor {
+impl InteractionHandler for AdminCommandHandler {
+    fn describe(&self) -> CommandGroupDescriptor {
         let builder = CommandBuilder::new(
             "admin".into(),
             "Admin configuration and management settings".into(),
@@ -62,23 +59,11 @@ impl ApplicationCommandHandler for AdminCommandHandler {
         CommandGroupDescriptor {
             name: "Admin",
             description: "Tools for admins",
-            commands: Box::new([CommandDescriptor {
-                command,
-                handler: Some(handler!(Self::execute)),
-            }]),
+            commands: Box::new([command]),
         }
     }
-}
 
-impl AdminCommandHandler {
-    pub fn new(utils: Arc<ApplicationCommandUtilities>) -> Self {
-        Self { utils }
-    }
-
-    async fn execute(
-        utils: Arc<ApplicationCommandUtilities>,
-        data: Box<InteractionData>,
-    ) -> anyhow::Result<()> {
+    async fn process_command(&self, data: Box<InteractionData>) -> anyhow::Result<()> {
         let options = &data.command.data.options;
 
         if options.len() != 1 {
@@ -94,10 +79,10 @@ impl AdminCommandHandler {
             .as_str();
         match sub_command_name {
             "matchmaking-settings" => {
-                MatchmakingSettingsHandler::execute(utils, data).await?;
+                MatchmakingSettingsHandler::execute(self.utils.clone(), data).await?;
             }
             "matchmaking-panels" => {
-                MatchmakingPanelsHandler::execute(utils, data).await?;
+                MatchmakingPanelsHandler::execute(self.utils.clone(), data).await?;
             }
             _ => {
                 debug!(name = %option.name.as_str(), "Unknown admin subcommand option");
@@ -106,6 +91,24 @@ impl AdminCommandHandler {
         }
 
         Ok(())
+    }
+
+    async fn process_autocomplete(&self, _data: Box<InteractionData>) -> anyhow::Result<()> {
+        unreachable!()
+    }
+
+    async fn process_modal(&self, _data: Box<InteractionData>) -> anyhow::Result<()> {
+        todo!("Admin handler does not currently process modals")
+    }
+
+    async fn process_component(&self, _data: Box<InteractionData>) -> anyhow::Result<()> {
+        unreachable!()
+    }
+}
+
+impl AdminCommandHandler {
+    pub fn new(utils: Arc<ApplicationCommandUtilities>) -> Self {
+        Self { utils }
     }
 
     #[deprecated]

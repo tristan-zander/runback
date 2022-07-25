@@ -3,10 +3,9 @@ pub mod eula;
 pub mod lfg;
 pub mod matchmaking;
 
-use std::{pin::Pin, sync::Arc};
+use std::sync::Arc;
 
 use entity::sea_orm::{prelude::Uuid, DatabaseConnection};
-use futures::Future;
 use twilight_cache_inmemory::InMemoryCache;
 use twilight_http::Client as DiscordHttpClient;
 use twilight_model::{
@@ -27,20 +26,9 @@ use twilight_model::application::interaction::ApplicationCommand;
 
 use crate::error::RunbackError;
 
-#[macro_export]
-macro_rules! handler {
-    ($func:expr) => {
-        |a, d| Box::pin($func(a, d))
-    };
-}
-
-pub type HandlerType = fn(
-    Arc<ApplicationCommandUtilities>,
-    Box<InteractionData>,
-) -> Pin<Box<dyn Future<Output = anyhow::Result<()>> + Send + 'static>>;
-
 /// Contains any helper functions to help make writing application command handlers easier
 /// Make sure this is thread safe
+#[derive(Debug)]
 pub struct ApplicationCommandUtilities {
     pub http_client: DiscordHttpClient,
     pub application_id: Id<ApplicationMarker>,
@@ -115,22 +103,16 @@ pub struct CommandGroupDescriptor {
     /// The description of the command group
     pub description: &'static str,
     /// The commands that are releated to this group
-    pub commands: Box<[CommandDescriptor]>,
+    pub commands: Box<[Command]>,
 }
 
-/// Describes a single command. This is used for the `/help`
-/// command and to register the command with Discord
-#[derive(Debug, Clone)]
-pub struct CommandDescriptor {
-    pub command: Command,
-    // pub guild_id: Option<Id<GuildMarker>>
-    pub handler: Option<HandlerType>,
-}
-
-pub trait ApplicationCommandHandler {
-    fn register(&self) -> CommandGroupDescriptor;
-
-    // async fn execute(&self, data: &InteractionData) -> anyhow::Result<()>;
+#[async_trait]
+pub trait InteractionHandler {
+    fn describe(&self) -> CommandGroupDescriptor;
+    async fn process_command(&self, data: Box<InteractionData>) -> anyhow::Result<()>;
+    async fn process_autocomplete(&self, data: Box<InteractionData>) -> anyhow::Result<()>;
+    async fn process_modal(&self, data: Box<InteractionData>) -> anyhow::Result<()>;
+    async fn process_component(&self, data: Box<InteractionData>) -> anyhow::Result<()>;
 }
 
 pub struct InteractionData {
@@ -139,12 +121,14 @@ pub struct InteractionData {
     // pub cancellation_token
 }
 
+#[derive(Debug)]
 pub struct PingCommandHandler {
     pub utils: Arc<ApplicationCommandUtilities>,
 }
 
-impl ApplicationCommandHandler for PingCommandHandler {
-    fn register(&self) -> CommandGroupDescriptor {
+#[async_trait]
+impl InteractionHandler for PingCommandHandler {
+    fn describe(&self) -> CommandGroupDescriptor {
         let builder = CommandBuilder::new(
             "ping".to_string(),
             "Responds with pong".into(),
@@ -160,19 +144,11 @@ impl ApplicationCommandHandler for PingCommandHandler {
         return CommandGroupDescriptor {
             name: "ping",
             description: "Commands that relate to response time",
-            commands: Box::new([CommandDescriptor {
-                handler: Some(handler!(PingCommandHandler::execute)),
-                command,
-            }]),
+            commands: Box::new([command]),
         };
     }
-}
 
-impl PingCommandHandler {
-    async fn execute(
-        utils: Arc<ApplicationCommandUtilities>,
-        data: Box<InteractionData>,
-    ) -> anyhow::Result<()> {
+    async fn process_command(&self, data: Box<InteractionData>) -> anyhow::Result<()> {
         let message = InteractionResponse {
             data: Some(
                 InteractionResponseDataBuilder::new()
@@ -192,9 +168,10 @@ impl PingCommandHandler {
             kind: InteractionResponseType::ChannelMessageWithSource,
         };
 
-        let _res = utils
+        let _res = self
+            .utils
             .http_client
-            .interaction(utils.application_id)
+            .interaction(self.utils.application_id)
             .create_response(data.command.id, data.command.token.as_str(), &message)
             .exec()
             .await?;
@@ -202,5 +179,17 @@ impl PingCommandHandler {
         debug!(message = %format!("{:?}", message), "Reponded to command \"Pong\"");
 
         Ok(())
+    }
+
+    async fn process_autocomplete(&self, _data: Box<InteractionData>) -> anyhow::Result<()> {
+        unreachable!()
+    }
+
+    async fn process_modal(&self, _data: Box<InteractionData>) -> anyhow::Result<()> {
+        unreachable!()
+    }
+
+    async fn process_component(&self, _data: Box<InteractionData>) -> anyhow::Result<()> {
+        unreachable!()
     }
 }
