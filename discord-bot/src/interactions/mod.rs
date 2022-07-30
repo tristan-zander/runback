@@ -167,7 +167,7 @@ impl InteractionProcessor {
             //     _,
             // ) => todo!(),
             twilight_model::application::interaction::Interaction::MessageComponent(_message) => {
-                debug!("Received message component")
+                debug!("Received message component");
             }
             twilight_model::application::interaction::Interaction::ModalSubmit(_modal) => {
                 debug!("Received modal");
