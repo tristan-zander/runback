@@ -1,4 +1,7 @@
-use twilight_model::application::command::{BaseCommandOptionData, CommandOption, CommandType};
+use twilight_model::{
+    application::command::{BaseCommandOptionData, CommandOption, CommandType},
+    id::{marker::GuildMarker, Id},
+};
 use twilight_util::builder::command::{CommandBuilder, SubCommandBuilder};
 
 use super::{
@@ -7,7 +10,10 @@ use super::{
 
 use std::sync::Arc;
 
-pub struct MatchmakingCommandHandler;
+#[derive(Debug, Clone)]
+pub struct MatchmakingCommandHandler {
+    utils: Arc<ApplicationCommandUtilities>,
+}
 
 #[async_trait]
 impl InteractionHandler for MatchmakingCommandHandler {
@@ -72,5 +78,15 @@ impl InteractionHandler for MatchmakingCommandHandler {
 
     async fn process_component(&self, _data: Box<InteractionData>) -> anyhow::Result<()> {
         unreachable!()
+    }
+}
+
+impl MatchmakingCommandHandler {
+    pub fn new(utils: Arc<ApplicationCommandUtilities>) -> Self {
+        Self { utils }
+    }
+
+    async fn start_matchmaking_thread(&self, guild: Id<GuildMarker>) -> anyhow::Result<()> {
+        Ok(())
     }
 }

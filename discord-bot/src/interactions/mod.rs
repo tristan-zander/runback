@@ -1,11 +1,7 @@
 pub mod application_commands;
 pub mod panels;
 
-use std::{
-    collections::{hash_map::DefaultHasher, HashMap},
-    hash::{Hash, Hasher},
-    sync::Arc,
-};
+use std::{collections::HashMap, sync::Arc};
 
 use dashmap::DashMap;
 use entity::sea_orm::{prelude::Uuid, DatabaseConnection};
@@ -54,7 +50,7 @@ impl InteractionProcessor {
                 utils: utils.clone(),
             })),
             Arc::new(Box::new(AdminCommandHandler::new(utils.clone()))),
-            Arc::new(Box::new(MatchmakingCommandHandler {})),
+            Arc::new(Box::new(MatchmakingCommandHandler::new(utils.clone()))),
             Arc::new(Box::new(EulaCommandHandler::new(utils.clone()))),
             Arc::new(Box::new(LfgCommandHandler {
                 utils: utils.clone(),

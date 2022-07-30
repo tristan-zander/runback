@@ -2,97 +2,23 @@ pub mod admin;
 pub mod eula;
 pub mod lfg;
 pub mod matchmaking;
+pub mod utils;
+
+pub use utils::ApplicationCommandUtilities;
 
 use std::sync::Arc;
 
-use entity::sea_orm::{prelude::Uuid, DatabaseConnection};
-use twilight_cache_inmemory::InMemoryCache;
-use twilight_http::Client as DiscordHttpClient;
+use entity::sea_orm::prelude::Uuid;
 use twilight_model::{
-    application::{
-        command::{Command, CommandType},
-        interaction::ApplicationCommand as DiscordApplicationCommand,
-    },
+    application::command::{Command, CommandType},
     channel::message::MessageFlags,
     http::interaction::{InteractionResponse, InteractionResponseType},
-    id::{marker::ApplicationMarker, Id},
 };
-use twilight_standby::Standby;
 use twilight_util::builder::command::{CommandBuilder, StringBuilder};
 use twilight_util::builder::embed::{EmbedBuilder, EmbedFieldBuilder};
 use twilight_util::builder::InteractionResponseDataBuilder;
 
 use twilight_model::application::interaction::ApplicationCommand;
-
-use crate::error::RunbackError;
-
-/// Contains any helper functions to help make writing application command handlers easier
-/// Make sure this is thread safe
-#[derive(Debug)]
-pub struct ApplicationCommandUtilities {
-    pub http_client: DiscordHttpClient,
-    pub application_id: Id<ApplicationMarker>,
-    pub db: Arc<Box<DatabaseConnection>>,
-    pub cache: Arc<InMemoryCache>,
-    pub standby: Arc<Standby>,
-}
-
-impl ApplicationCommandUtilities {
-    pub async fn new(
-        db: Arc<Box<DatabaseConnection>>,
-        cache: Arc<InMemoryCache>,
-        standby: Arc<Standby>,
-    ) -> anyhow::Result<Self> {
-        let http_client = DiscordHttpClient::new(crate::CONFIG.token.clone());
-        let application_id = {
-            let response = http_client.current_user_application().exec().await?;
-            response.model().await?.id
-        };
-
-        Ok(Self::new_with_application_id(
-            db,
-            application_id,
-            cache,
-            standby,
-        ))
-    }
-
-    pub fn new_with_application_id(
-        db: Arc<Box<DatabaseConnection>>,
-        application_id: Id<ApplicationMarker>,
-        cache: Arc<InMemoryCache>,
-        standby: Arc<Standby>,
-    ) -> Self {
-        Self {
-            db,
-            http_client: DiscordHttpClient::new(crate::CONFIG.token.clone()),
-            application_id,
-            cache,
-            standby,
-        }
-    }
-
-    pub fn db_ref(&self) -> &DatabaseConnection {
-        (*self.db).as_ref()
-    }
-
-    async fn send_message(
-        &self,
-        command: &DiscordApplicationCommand,
-        message: &InteractionResponse,
-    ) -> Result<(), RunbackError> {
-        let res = self
-            .http_client
-            .interaction(self.application_id)
-            .create_response(command.id, command.token.as_str(), message)
-            .exec()
-            .await?;
-
-        debug!("Send Message response: {:#?}", res);
-
-        Ok(())
-    }
-}
 
 /// Describes a group of commands. This is mainly used
 /// for structural purposes, and for the `/help` command
