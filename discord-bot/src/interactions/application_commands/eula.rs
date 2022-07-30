@@ -11,7 +11,8 @@ use twilight_util::builder::command::{CommandBuilder, StringBuilder};
 use twilight_util::builder::InteractionResponseDataBuilder as CallbackDataBuilder;
 
 use super::{
-    ApplicationCommandUtilities, CommandGroupDescriptor, InteractionData, InteractionHandler,
+    ApplicationCommandData, ApplicationCommandUtilities, CommandGroupDescriptor,
+    InteractionHandler, MessageComponentData,
 };
 
 // Consider getting this path from an environment variable
@@ -40,13 +41,13 @@ impl InteractionHandler for EulaCommandHandler {
 
         let command = builder.build();
         CommandGroupDescriptor {
-            name: "EULA",
+            name: "eula",
             description: "Read and accept the EULA",
             commands: Box::new([command]),
         }
     }
 
-    async fn process_command(&self, data: Box<InteractionData>) -> anyhow::Result<()> {
+    async fn process_command(&self, data: Box<ApplicationCommandData>) -> anyhow::Result<()> {
         let command = &data.command;
         debug!(options = %format!("{:?}", command.data.options));
 
@@ -172,15 +173,15 @@ impl InteractionHandler for EulaCommandHandler {
         Ok(())
     }
 
-    async fn process_autocomplete(&self, _data: Box<InteractionData>) -> anyhow::Result<()> {
+    async fn process_autocomplete(&self, _data: Box<ApplicationCommandData>) -> anyhow::Result<()> {
         unreachable!()
     }
 
-    async fn process_modal(&self, _data: Box<InteractionData>) -> anyhow::Result<()> {
+    async fn process_modal(&self, _data: Box<ApplicationCommandData>) -> anyhow::Result<()> {
         unreachable!()
     }
 
-    async fn process_component(&self, _data: Box<InteractionData>) -> anyhow::Result<()> {
+    async fn process_component(&self, _data: Box<MessageComponentData>) -> anyhow::Result<()> {
         unreachable!()
     }
 }

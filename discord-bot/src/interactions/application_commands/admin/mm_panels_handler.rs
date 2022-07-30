@@ -11,17 +11,30 @@ use twilight_model::{
 };
 
 use crate::interactions::{
-    application_commands::{ApplicationCommandUtilities, InteractionData},
+    application_commands::{
+        ApplicationCommandData, ApplicationCommandUtilities, CommandGroupDescriptor,
+        InteractionHandler, MessageComponentData,
+    },
     panels::admin_lobby::AdminLobbiesPanel,
 };
 
-pub struct MatchmakingPanelsHandler;
+pub struct MatchmakingPanelsHandler {
+    utils: Arc<ApplicationCommandUtilities>,
+}
 
-impl MatchmakingPanelsHandler {
-    pub async fn execute(
-        utils: Arc<ApplicationCommandUtilities>,
-        data: Box<InteractionData>,
-    ) -> anyhow::Result<()> {
+#[async_trait]
+impl InteractionHandler for MatchmakingPanelsHandler {
+    fn describe(&self) -> CommandGroupDescriptor {
+        // This is not a top-level command handler.
+        // This function should never be registered into the InteractionProcessor/
+        CommandGroupDescriptor {
+            name: "panels",
+            description: "Create/manage matchmaking panels",
+            commands: Box::new([]),
+        }
+    }
+
+    async fn process_command(&self, data: Box<ApplicationCommandData>) -> anyhow::Result<()> {
         let command = &data.command;
         let guild_id = match command.guild_id {
             Some(id) => id,
@@ -30,7 +43,8 @@ impl MatchmakingPanelsHandler {
             }
         };
 
-        let channels = utils
+        let channels = self
+            .utils
             .http_client
             .guild_channels(guild_id)
             .exec()
@@ -55,7 +69,7 @@ impl MatchmakingPanelsHandler {
                 entity::matchmaking::panel::Column::GuildId
                     .eq(Into::<IdWrapper<GuildMarker>>::into(guild_id)),
             )
-            .all(utils.db_ref())
+            .all(self.utils.db_ref())
             .await?;
 
         let panel = AdminLobbiesPanel {
@@ -71,56 +85,31 @@ impl MatchmakingPanelsHandler {
             data: Some(callback_data.build()),
         };
 
-        utils
+        self.utils
             .send_message(command, &message)
             .await
             .map_err(|e| anyhow!("Could not send message: {}", e))?;
 
-        // let token = command.token.clone();
-        // let mut events = self
-        //     .utils
-        //     .standby
-        //     .wait_for_stream(guild_id, move |e: &Event| -> bool {
-        //         debug!("Standby event: {:#?}", e);
-        //         match e {
-        //             twilight_gateway::Event::InteractionCreate(interaction) => match &interaction.0
-        //             {
-        //                 twilight_model::application::interaction::Interaction::MessageComponent(
-        //                     comp,
-        //                 ) => comp.token == token,
-        //                 twilight_model::application::interaction::Interaction::ModalSubmit(
-        //                     modal,
-        //                 ) => modal.token == token,
-        //                 _ => false,
-        //             },
-        //             _ => false,
-        //         }
-        //     });
-
-        // while let Some(ev) = events.next().await {
-        //     match ev {
-        //         Event::InteractionCreate(interaction) => {
-        //             match &interaction.0 {
-        //                 twilight_model::application::interaction::Interaction::MessageComponent(
-        //                     component,
-        //                 ) => {
-        //                     info!("Recieved message component interaction while awaiting standby.");
-        //                 }
-        //                 twilight_model::application::interaction::Interaction::ModalSubmit(
-        //                     modal,
-        //                 ) => {
-        //                     todo!()
-        //                 }
-        //                 _ => {}
-        //             }
-        //             // self.on_message_component_event(id_parts, component);
-        //         }
-        //         _ => {}
-        //     }
-        // }
-
         info!("Finished handling mm_panels event");
 
         Ok(())
+    }
+
+    async fn process_autocomplete(&self, _data: Box<ApplicationCommandData>) -> anyhow::Result<()> {
+        todo!()
+    }
+
+    async fn process_modal(&self, _data: Box<ApplicationCommandData>) -> anyhow::Result<()> {
+        todo!()
+    }
+
+    async fn process_component(&self, _data: Box<MessageComponentData>) -> anyhow::Result<()> {
+        todo!()
+    }
+}
+
+impl MatchmakingPanelsHandler {
+    pub fn new(utils: Arc<ApplicationCommandUtilities>) -> Self {
+        Self { utils }
     }
 }

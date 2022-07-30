@@ -10,7 +10,10 @@ use std::sync::Arc;
 
 use entity::sea_orm::prelude::Uuid;
 use twilight_model::{
-    application::command::{Command, CommandType},
+    application::{
+        command::{Command, CommandType},
+        interaction::MessageComponentInteraction,
+    },
     channel::message::MessageFlags,
     http::interaction::{InteractionResponse, InteractionResponseType},
 };
@@ -35,14 +38,21 @@ pub struct CommandGroupDescriptor {
 #[async_trait]
 pub trait InteractionHandler {
     fn describe(&self) -> CommandGroupDescriptor;
-    async fn process_command(&self, data: Box<InteractionData>) -> anyhow::Result<()>;
-    async fn process_autocomplete(&self, data: Box<InteractionData>) -> anyhow::Result<()>;
-    async fn process_modal(&self, data: Box<InteractionData>) -> anyhow::Result<()>;
-    async fn process_component(&self, data: Box<InteractionData>) -> anyhow::Result<()>;
+    async fn process_command(&self, data: Box<ApplicationCommandData>) -> anyhow::Result<()>;
+    async fn process_autocomplete(&self, data: Box<ApplicationCommandData>) -> anyhow::Result<()>;
+    async fn process_modal(&self, data: Box<ApplicationCommandData>) -> anyhow::Result<()>;
+    async fn process_component(&self, data: Box<MessageComponentData>) -> anyhow::Result<()>;
 }
 
-pub struct InteractionData {
+pub struct ApplicationCommandData {
     pub command: ApplicationCommand,
+    pub id: Uuid,
+    // pub cancellation_token
+}
+
+pub struct MessageComponentData {
+    pub message: MessageComponentInteraction,
+    pub action: String,
     pub id: Uuid,
     // pub cancellation_token
 }
@@ -74,7 +84,7 @@ impl InteractionHandler for PingCommandHandler {
         };
     }
 
-    async fn process_command(&self, data: Box<InteractionData>) -> anyhow::Result<()> {
+    async fn process_command(&self, data: Box<ApplicationCommandData>) -> anyhow::Result<()> {
         let message = InteractionResponse {
             data: Some(
                 InteractionResponseDataBuilder::new()
@@ -107,15 +117,15 @@ impl InteractionHandler for PingCommandHandler {
         Ok(())
     }
 
-    async fn process_autocomplete(&self, _data: Box<InteractionData>) -> anyhow::Result<()> {
+    async fn process_autocomplete(&self, _data: Box<ApplicationCommandData>) -> anyhow::Result<()> {
         unreachable!()
     }
 
-    async fn process_modal(&self, _data: Box<InteractionData>) -> anyhow::Result<()> {
+    async fn process_modal(&self, _data: Box<ApplicationCommandData>) -> anyhow::Result<()> {
         unreachable!()
     }
 
-    async fn process_component(&self, _data: Box<InteractionData>) -> anyhow::Result<()> {
+    async fn process_component(&self, _data: Box<MessageComponentData>) -> anyhow::Result<()> {
         unreachable!()
     }
 }

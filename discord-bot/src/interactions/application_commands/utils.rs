@@ -20,7 +20,7 @@ use migration::sea_orm::EntityTrait;
 use twilight_model::application::interaction::ApplicationCommand as DiscordApplicationCommand;
 
 /// Contains any helper functions to help make writing application command handlers easier
-/// Make sure this is thread safe
+// Make sure this is thread safe
 #[derive(Debug)]
 pub struct ApplicationCommandUtilities {
     pub http_client: DiscordHttpClient,

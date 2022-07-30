@@ -1,30 +1,40 @@
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
 use chrono::Utc;
-use entity::sea_orm::{EntityTrait, IntoActiveModel, ActiveModelTrait};
-use futures::StreamExt;
-use tokio::time::error::Elapsed;
-use twilight_gateway::Event;
-use twilight_http::request;
+use entity::sea_orm::{ActiveModelTrait, EntityTrait, IntoActiveModel};
 use twilight_model::{
     application::{
         component::{select_menu::SelectMenuOption, ActionRow, Component, SelectMenu},
-        interaction::{Interaction, InteractionType, MessageComponentInteraction},
+        interaction::MessageComponentInteraction,
     },
     channel::{message::MessageFlags, Channel, ChannelType},
-    http::interaction::{InteractionResponse, InteractionResponseType}, id::{Id, marker::ChannelMarker},
+    http::interaction::{InteractionResponse, InteractionResponseType},
+    id::{marker::ChannelMarker, Id},
 };
 use twilight_util::builder::InteractionResponseDataBuilder;
 
-use crate::{interactions::application_commands::{ApplicationCommandUtilities, InteractionData}, error::RunbackError};
+use crate::interactions::application_commands::{
+    ApplicationCommandData, ApplicationCommandUtilities, CommandGroupDescriptor,
+    InteractionHandler, MessageComponentData,
+};
 
-pub struct MatchmakingSettingsHandler;
+pub struct MatchmakingSettingsHandler {
+    utils: Arc<ApplicationCommandUtilities>,
+}
 
-impl MatchmakingSettingsHandler {
-    pub async fn execute(
-        utils: Arc<ApplicationCommandUtilities>,
-        data: Box<InteractionData>,
-    ) -> anyhow::Result<()> {
+#[async_trait]
+impl InteractionHandler for MatchmakingSettingsHandler {
+    fn describe(&self) -> CommandGroupDescriptor {
+        // This is not a top-level command handler.
+        // This function should never be registered into the InteractionProcessor/
+        CommandGroupDescriptor {
+            name: "settings",
+            description: "View/update admin matchmaking settings",
+            commands: Box::new([]),
+        }
+    }
+
+    async fn process_command(&self, data: Box<ApplicationCommandData>) -> anyhow::Result<()> {
         let command = &data.command;
         // VERIFY: Is it possible that we can send the information of other guilds here?
         let guild_id = match command.guild_id {
@@ -34,7 +44,8 @@ impl MatchmakingSettingsHandler {
             }
         };
 
-        let channels = utils
+        let channels = self
+            .utils
             .http_client
             .guild_channels(guild_id)
             .exec()
@@ -62,7 +73,7 @@ impl MatchmakingSettingsHandler {
                     .flags(MessageFlags::EPHEMERAL)
                     .components(vec![Component::ActionRow(ActionRow {
                         components: vec![Component::SelectMenu(SelectMenu {
-                            custom_id: "admin:mm:channel".into(),
+                            custom_id: "admin:settings:channel".into(),
                             disabled: false,
                             max_values: Some(1),
                             min_values: Some(1),
@@ -89,56 +100,45 @@ impl MatchmakingSettingsHandler {
             ),
         };
 
-        utils
+        self.utils
             .send_message(command, &message)
             .await
             .map_err(|e| anyhow!("Could not send message: {}", e))?;
 
-        let application_id = utils.application_id;
-
-        // TODO: Prefer to use InteractionHandler.process_component()
-        let mut component_stream = utils
-            .standby
-            .wait_for_stream(guild_id, move |e: &Event|  
-                match e {
-                Event::InteractionCreate(int) => {
-                    if int.application_id() != application_id {
-                        return false;
-                    }
-                    int.0.kind() == InteractionType::MessageComponent
-                }
-                _ => false,
-            });
-
-        let timeout : Result<anyhow::Result<()>, Elapsed> = tokio::time::timeout(Duration::from_secs(60 * 10), async {
-            while let Some(e) = component_stream.next().await {
-                match e {
-                    Event::InteractionCreate(int) => match int.0 {
-                        Interaction::MessageComponent(component) => {
-                            if component.data.custom_id == "admin:mm:channel" {
-                                Self::set_matchmaking_channel(utils.clone(), component.as_ref()).await?;
-                            }
-                        }
-                        _ => unreachable!("The standby should always filter out non-components"),
-                    },
-                    _ => unreachable!("The standby should never give us this type of interactions"),
-                }
-            }
-            Ok(())
-        })
-        .await;
-
-        if let Err(_) = timeout {
-            // TODO: Investigate why this doesn't work
-            debug!("Time to timeout!");
-            utils.http_client.interaction(utils.application_id).delete_response(command.token.as_str()).exec().await?;
-        }
-
         Ok(())
     }
 
+    async fn process_autocomplete(&self, _data: Box<ApplicationCommandData>) -> anyhow::Result<()> {
+        todo!()
+    }
+
+    async fn process_modal(&self, _data: Box<ApplicationCommandData>) -> anyhow::Result<()> {
+        todo!()
+    }
+
+    async fn process_component(&self, data: Box<MessageComponentData>) -> anyhow::Result<()> {
+        match data.action.as_str() {
+            "channel" => {
+                self.set_matchmaking_channel(&data.message).await?;
+                return Ok(());
+            }
+            _ => {
+                return Err(anyhow!(
+                    "Unknown field given to admin settings: {}",
+                    &data.action
+                ))
+            }
+        }
+    }
+}
+
+impl MatchmakingSettingsHandler {
+    pub fn new(utils: Arc<ApplicationCommandUtilities>) -> Self {
+        Self { utils }
+    }
+
     async fn set_matchmaking_channel(
-        utils: Arc<ApplicationCommandUtilities>,
+        &self,
         component: &MessageComponentInteraction,
     ) -> anyhow::Result<()> {
         let channel_id: Id<ChannelMarker> = Id::new(
@@ -148,9 +148,7 @@ impl MatchmakingSettingsHandler {
                 .get(0)
                 .ok_or_else(|| anyhow!("No component values provided."))?
                 .parse::<u64>()
-                .map_err(|e| {
-                    anyhow!(e)
-                })?,
+                .map_err(|e| anyhow!(e))?,
         );
 
         let guild_id = component
@@ -158,13 +156,13 @@ impl MatchmakingSettingsHandler {
             .ok_or_else(|| anyhow!("You cannot use Runback in a DM."))?;
 
         let setting = entity::matchmaking::Setting::find_by_id(guild_id.into())
-            .one(utils.db_ref())
+            .one(self.utils.db_ref())
             .await?;
 
         let _setting = if setting.is_some() {
             let mut setting = unsafe { setting.unwrap_unchecked() }.into_active_model();
             setting.channel_id = entity::sea_orm::Set(Some(channel_id.into()));
-            setting.update(utils.db_ref()).await?
+            setting.update(self.utils.db_ref()).await?
         } else {
             let setting = entity::matchmaking::settings::Model {
                 guild_id: guild_id.into(),
@@ -176,7 +174,7 @@ impl MatchmakingSettingsHandler {
             .into_active_model();
             setting
                 .into_active_model()
-                .insert(utils.db_ref())
+                .insert(self.utils.db_ref())
                 .await?
         };
 
@@ -188,10 +186,10 @@ impl MatchmakingSettingsHandler {
                 .build()
         )};
 
-        let _res = 
-            utils
+        let _res =
+            self.utils
             .http_client
-            .interaction(utils.application_id)
+            .interaction(self.utils.application_id)
             .update_response(component.token.as_str())
             .content(Some("Successfully set the matchmaking channel. Please wait a few moments for changes to take effect"))?
             // .map_err(|e| RunbackError { message: "Could not set content for response message during set_matchmaking_channel()".to_owned(), inner: Some(Box::new(e)) })?

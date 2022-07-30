@@ -11,14 +11,15 @@ use tracing::Level;
 use twilight_cache_inmemory::InMemoryCache;
 use twilight_gateway::Shard;
 use twilight_model::{
-    application::command::Command,
+    application::{command::Command, interaction::Interaction},
     gateway::payload::incoming::InteractionCreate,
     id::{marker::CommandMarker, Id},
 };
 use twilight_standby::Standby;
 
 use crate::interactions::application_commands::{
-    lfg::LfgCommandHandler, ApplicationCommandUtilities, InteractionData,
+    lfg::LfgCommandHandler, ApplicationCommandData, ApplicationCommandUtilities,
+    MessageComponentData,
 };
 
 use self::application_commands::{
@@ -27,9 +28,12 @@ use self::application_commands::{
     PingCommandHandler,
 };
 
+type HandlerType = Arc<Box<dyn InteractionHandler + Send + Sync + 'static>>;
+
 pub struct InteractionProcessor {
     utils: Arc<ApplicationCommandUtilities>,
-    handlers: HashMap<Id<CommandMarker>, Arc<Box<dyn InteractionHandler + Send + Sync + 'static>>>,
+    application_command_handlers: HashMap<Id<CommandMarker>, HandlerType>,
+    component_handlers: HashMap<&'static str, HandlerType>,
     commands: Vec<Command>,
     command_groups: Vec<CommandGroupDescriptor>,
 }
@@ -62,7 +66,8 @@ impl InteractionProcessor {
             commands: Vec::new(),
             command_groups: Vec::with_capacity(top_level_handlers.len()),
             utils,
-            handlers: HashMap::new(),
+            application_command_handlers: HashMap::new(),
+            component_handlers: HashMap::new(),
         };
 
         this.register_commands(top_level_handlers).await?;
@@ -106,6 +111,18 @@ impl InteractionProcessor {
 
         self.command_groups = groups.iter().map(|g| g.1.clone()).collect();
         for (handler, descriptor) in groups {
+            debug!(desc = ?descriptor, "Descriptor");
+            let old = self
+                .component_handlers
+                .insert(descriptor.name, handler.clone());
+
+            if let Some(_) = old {
+                return Err(anyhow!(
+                    "Tried to overwrite a component handler: {}",
+                    descriptor.name
+                ));
+            }
+
             for c in self.commands.iter() {
                 if c.id.is_none()
                     || descriptor
@@ -118,7 +135,7 @@ impl InteractionProcessor {
                     continue;
                 }
 
-                if let Some(old) = self.handlers.insert(
+                if let Some(old) = self.application_command_handlers.insert(
                     c.id.ok_or_else(|| anyhow!("Command does not have an id: {}", c.name))?,
                     handler.clone(),
                 ) {
@@ -146,12 +163,12 @@ impl InteractionProcessor {
         match &*interaction {
             // I think this is only for webhook interaction handlers
             // twilight_model::application::interaction::Interaction::Ping(_) => ,
-            twilight_model::application::interaction::Interaction::ApplicationCommand(command) => {
+            Interaction::ApplicationCommand(command) => {
                 // self.application_command_handlers
                 //     .on_command_receive(command.as_ref())
                 //     .await?;
-                if let Some(handler) = self.handlers.get(&command.data.id) {
-                    let data = Box::new(InteractionData {
+                if let Some(handler) = self.application_command_handlers.get(&command.data.id) {
+                    let data = Box::new(ApplicationCommandData {
                         command: *command.to_owned(),
                         id: Uuid::new_v4(),
                     });
@@ -163,13 +180,28 @@ impl InteractionProcessor {
                     return Err(anyhow!("No such command handler found"));
                 }
             }
-            // twilight_model::application::interaction::Interaction::ApplicationCommandAutocomplete(
-            //     _,
-            // ) => todo!(),
-            twilight_model::application::interaction::Interaction::MessageComponent(_message) => {
+            twilight_model::application::interaction::Interaction::ApplicationCommandAutocomplete(
+                _,
+            ) => debug!("Received autocomplete"),
+            Interaction::MessageComponent(message) => {
                 debug!("Received message component");
+
+                if let Some((handler_name, leftover)) = message.data.custom_id.split_once(':') {
+                    if let Some(handler) = self.component_handlers.get(handler_name) {
+                        let data = Box::new(MessageComponentData {
+                            id:Uuid::new_v4(), message: *message.to_owned(), action: leftover.to_string() }
+                        );
+                        let handler = handler.clone();
+                        let fut = Box::pin(async move { handler.process_component(data).await });
+                        return Ok(fut);
+                    } else {
+                        return Err(anyhow!("Invalid message component handler: {}", handler_name))
+                    }
+                } else {
+                    return Err(anyhow!("Message component custom_id does not match the format \"handler:action\""));
+                }
             }
-            twilight_model::application::interaction::Interaction::ModalSubmit(_modal) => {
+            Interaction::ModalSubmit(_modal) => {
                 debug!("Received modal");
             }
             _ => {
