@@ -1,8 +1,14 @@
-use entity::sea_orm::DatabaseConnection;
+use entity::{
+    sea_orm::{DatabaseConnection, Set},
+    IdWrapper,
+};
 use twilight_cache_inmemory::InMemoryCache;
 use twilight_model::{
     http::interaction::InteractionResponse,
-    id::{marker::ApplicationMarker, Id},
+    id::{
+        marker::{ApplicationMarker, GuildMarker},
+        Id,
+    },
 };
 
 use twilight_http::Client as DiscordHttpClient;
@@ -10,6 +16,7 @@ use twilight_standby::Standby;
 
 use std::sync::Arc;
 
+use migration::sea_orm::EntityTrait;
 use twilight_model::application::interaction::ApplicationCommand as DiscordApplicationCommand;
 
 /// Contains any helper functions to help make writing application command handlers easier
@@ -77,5 +84,35 @@ impl ApplicationCommandUtilities {
         debug!("Send Message response: {:#?}", res);
 
         Ok(())
+    }
+
+    /// If the guild does not exist, it will create the settings with the default settings
+    /// and commit it to the database.
+    pub async fn get_guild_settings(
+        &self,
+        guild: Id<GuildMarker>,
+    ) -> anyhow::Result<entity::matchmaking::settings::Model> {
+        use entity::matchmaking::{settings, Setting};
+
+        let guild_id = IdWrapper::from(guild);
+        let setting = Setting::find_by_id(guild_id.clone())
+            .one(self.db_ref())
+            .await?;
+
+        match setting {
+            Some(setting) => Ok(setting),
+            None => {
+                let setting = settings::ActiveModel {
+                    guild_id: Set(guild_id),
+                    ..Default::default()
+                };
+
+                let setting = Setting::insert(setting)
+                    .exec_with_returning(self.db_ref())
+                    .await?;
+
+                Ok(setting)
+            }
+        }
     }
 }

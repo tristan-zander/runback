@@ -1,5 +1,9 @@
 use twilight_model::{
-    application::command::{BaseCommandOptionData, CommandOption, CommandType},
+    application::{
+        command::{BaseCommandOptionData, CommandOption, CommandType},
+        interaction::application_command::CommandDataOption,
+    },
+    channel::{thread::AutoArchiveDuration, Channel, ChannelType},
     id::{marker::GuildMarker, Id},
 };
 use twilight_util::builder::command::{CommandBuilder, SubCommandBuilder};
@@ -65,7 +69,62 @@ impl InteractionHandler for MatchmakingCommandHandler {
     }
 
     async fn process_command(&self, data: Box<InteractionData>) -> anyhow::Result<()> {
-        todo!("Command processor not initiated")
+        if let Some(target) = data.command.data.target_id {
+            // Then start a mm session with that user. It's not chat message command,
+            // but a click interaction.
+        }
+
+        let users = data
+            .command
+            .data
+            .resolved
+            .into_iter()
+            .flat_map(|r| r.users.into_keys().collect::<Vec<_>>())
+            .collect::<Vec<_>>();
+
+        if users.len() == 0 {
+            return Err(anyhow!(
+                "Cannot start matchmaking without specifying an opponent"
+            ));
+        }
+
+        let thread = self
+            .start_matchmaking_thread(
+                data.command
+                    .guild_id
+                    .ok_or_else(|| anyhow!("Command cannot be run in a DM"))?,
+                "Matchmaking test",
+            )
+            .await?;
+
+        self.utils.http_client.join_thread(thread.id).exec().await?;
+        self.utils
+            .http_client
+            .add_thread_member(
+                thread.id,
+                data.command
+                    .member
+                    .ok_or_else(|| anyhow!("Command cannot be used in a DM"))?
+                    .user
+                    .ok_or_else(|| {
+                        anyhow!(
+                            "Could not get the Discord member's user field (structure is partial)"
+                        )
+                    })?
+                    .id,
+            )
+            .exec()
+            .await?;
+
+        for user in users {
+            self.utils
+                .http_client
+                .add_thread_member(thread.id, user)
+                .exec()
+                .await?;
+        }
+
+        Ok(())
     }
 
     async fn process_autocomplete(&self, _data: Box<InteractionData>) -> anyhow::Result<()> {
@@ -86,7 +145,32 @@ impl MatchmakingCommandHandler {
         Self { utils }
     }
 
-    async fn start_matchmaking_thread(&self, guild: Id<GuildMarker>) -> anyhow::Result<()> {
-        Ok(())
+    async fn start_matchmaking_thread(
+        &self,
+        guild: Id<GuildMarker>,
+        name: &str,
+    ) -> anyhow::Result<Channel> {
+        let settings = self.utils.get_guild_settings(guild).await?;
+
+        if let Some(channel) = settings.channel_id {
+            let channel = channel.into_id();
+
+            let thread = self
+                .utils
+                .http_client
+                .create_thread(channel, name, ChannelType::GuildPublicThread)?
+                .invitable(true)
+                .auto_archive_duration(AutoArchiveDuration::Day)
+                .exec()
+                .await?
+                .model()
+                .await?;
+
+            return Ok(thread);
+        }
+
+        Err(anyhow!(
+            "The server has not enabled a default matchmaking channel"
+        ))
     }
 }
