@@ -1,15 +1,13 @@
 use twilight_model::{
-    application::{
-        command::{BaseCommandOptionData, CommandOption, CommandType},
-        interaction::application_command::CommandDataOption,
-    },
+    application::command::{BaseCommandOptionData, CommandOption, CommandType},
     channel::{thread::AutoArchiveDuration, Channel, ChannelType},
     id::{marker::GuildMarker, Id},
 };
 use twilight_util::builder::command::{CommandBuilder, SubCommandBuilder};
 
 use super::{
-    ApplicationCommandUtilities, CommandGroupDescriptor, InteractionData, InteractionHandler,
+    ApplicationCommandData, ApplicationCommandUtilities, CommandGroupDescriptor,
+    InteractionHandler, MessageComponentData,
 };
 
 use std::sync::Arc;
@@ -68,8 +66,8 @@ impl InteractionHandler for MatchmakingCommandHandler {
         }
     }
 
-    async fn process_command(&self, data: Box<InteractionData>) -> anyhow::Result<()> {
-        if let Some(target) = data.command.data.target_id {
+    async fn process_command(&self, data: Box<ApplicationCommandData>) -> anyhow::Result<()> {
+        if let Some(_target) = data.command.data.target_id {
             // Then start a mm session with that user. It's not chat message command,
             // but a click interaction.
         }
@@ -127,15 +125,15 @@ impl InteractionHandler for MatchmakingCommandHandler {
         Ok(())
     }
 
-    async fn process_autocomplete(&self, _data: Box<InteractionData>) -> anyhow::Result<()> {
+    async fn process_autocomplete(&self, _data: Box<ApplicationCommandData>) -> anyhow::Result<()> {
         unreachable!()
     }
 
-    async fn process_modal(&self, _data: Box<InteractionData>) -> anyhow::Result<()> {
+    async fn process_modal(&self, _data: Box<ApplicationCommandData>) -> anyhow::Result<()> {
         unreachable!()
     }
 
-    async fn process_component(&self, _data: Box<InteractionData>) -> anyhow::Result<()> {
+    async fn process_component(&self, _data: Box<MessageComponentData>) -> anyhow::Result<()> {
         unreachable!()
     }
 }

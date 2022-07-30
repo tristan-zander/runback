@@ -20,8 +20,8 @@ use twilight_model::{
 use twilight_util::builder::{command::CommandBuilder, InteractionResponseDataBuilder};
 
 use super::{
-    ApplicationCommandUtilities, CommandGroupDescriptor, InteractionData,
-    InteractionHandler,
+    ApplicationCommandData, ApplicationCommandUtilities, CommandGroupDescriptor,
+    InteractionHandler, MessageComponentData,
 };
 
 pub struct LfgCommandHandler {
@@ -114,7 +114,7 @@ impl InteractionHandler for LfgCommandHandler {
         }
     }
 
-    async fn process_command(&self, data: Box<InteractionData>) -> anyhow::Result<()> {
+    async fn process_command(&self, data: Box<ApplicationCommandData>) -> anyhow::Result<()> {
         let guild_id = data
             .command
             .guild_id
@@ -176,15 +176,15 @@ impl InteractionHandler for LfgCommandHandler {
         Ok(())
     }
 
-    async fn process_autocomplete(&self, _data: Box<InteractionData>) -> anyhow::Result<()> {
+    async fn process_autocomplete(&self, _data: Box<ApplicationCommandData>) -> anyhow::Result<()> {
         unreachable!()
     }
 
-    async fn process_modal(&self, _data: Box<InteractionData>) -> anyhow::Result<()> {
+    async fn process_modal(&self, _data: Box<ApplicationCommandData>) -> anyhow::Result<()> {
         unreachable!()
     }
 
-    async fn process_component(&self, _data: Box<InteractionData>) -> anyhow::Result<()> {
+    async fn process_component(&self, _data: Box<MessageComponentData>) -> anyhow::Result<()> {
         unreachable!()
     }
 }

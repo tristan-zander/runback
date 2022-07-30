@@ -71,7 +71,7 @@ impl<'a> AdminLobbiesPanel<'a> {
         if select_menu_options.len() > 0 {
             let select_menu_row = Component::ActionRow(ActionRow {
                 components: vec![Component::SelectMenu(SelectMenu {
-                    custom_id: "admin:mm:panels:select".into(),
+                    custom_id: "admin:panels:select".into(),
                     disabled: false,
                     max_values: Some(1),
                     min_values: Some(1),
