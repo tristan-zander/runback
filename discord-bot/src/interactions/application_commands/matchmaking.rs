@@ -1,7 +1,13 @@
+use chrono::Utc;
+use dashmap::DashMap;
+use entity::sea_orm::prelude::{DateTimeUtc, Uuid};
 use twilight_model::{
     application::command::{BaseCommandOptionData, CommandOption, CommandType},
     channel::{thread::AutoArchiveDuration, Channel, ChannelType},
-    id::{marker::GuildMarker, Id},
+    id::{
+        marker::{ChannelMarker, GuildMarker, UserMarker},
+        Id,
+    },
 };
 use twilight_util::builder::command::{CommandBuilder, SubCommandBuilder};
 
@@ -13,8 +19,17 @@ use super::{
 use std::sync::Arc;
 
 #[derive(Debug, Clone)]
+struct Session {
+    id: Uuid,
+    users: Vec<Id<UserMarker>>,
+    thread: Id<ChannelMarker>,
+    started_at: DateTimeUtc,
+}
+
+#[derive(Debug, Clone)]
 pub struct MatchmakingCommandHandler {
     utils: Arc<ApplicationCommandUtilities>,
+    sessions: DashMap<Id<ChannelMarker>, Session>,
 }
 
 #[async_trait]
@@ -72,13 +87,28 @@ impl InteractionHandler for MatchmakingCommandHandler {
             // but a click interaction.
         }
 
-        let users = data
+        let mut users = data
             .command
             .data
             .resolved
+            .as_ref()
             .into_iter()
-            .flat_map(|r| r.users.into_keys().collect::<Vec<_>>())
+            .flat_map(|r| r.users.keys().map(|id| id.to_owned()).collect::<Vec<_>>())
             .collect::<Vec<_>>();
+
+        let owner_id = data
+            .command
+            .member
+            .as_ref()
+            .ok_or_else(|| anyhow!("Command cannot be used in a DM"))?
+            .user
+            .as_ref()
+            .ok_or_else(|| {
+                anyhow!("Could not get the Discord member's user field (structure is partial)")
+            })?
+            .id;
+
+        users.push(owner_id);
 
         if users.len() == 0 {
             return Err(anyhow!(
@@ -95,32 +125,31 @@ impl InteractionHandler for MatchmakingCommandHandler {
             )
             .await?;
 
-        self.utils.http_client.join_thread(thread.id).exec().await?;
-        self.utils
-            .http_client
-            .add_thread_member(
-                thread.id,
-                data.command
-                    .member
-                    .ok_or_else(|| anyhow!("Command cannot be used in a DM"))?
-                    .user
-                    .ok_or_else(|| {
-                        anyhow!(
-                            "Could not get the Discord member's user field (structure is partial)"
-                        )
-                    })?
-                    .id,
-            )
-            .exec()
-            .await?;
+        let res = self.add_users_to_thread(thread.id, &users).await;
 
-        for user in users {
+        if let Err(e) = res {
+            // Close the thread and send an error.
+
             self.utils
                 .http_client
-                .add_thread_member(thread.id, user)
+                .delete_channel(thread.id)
                 .exec()
                 .await?;
+
+            return Err(e);
         }
+
+        self.sessions.insert(
+            thread.id,
+            Session {
+                id: Uuid::new_v4(),
+                users,
+                thread: thread.id,
+                started_at: Utc::now(),
+            },
+        );
+
+        // TODO: Send a message in the channel with some directions
 
         Ok(())
     }
@@ -140,7 +169,12 @@ impl InteractionHandler for MatchmakingCommandHandler {
 
 impl MatchmakingCommandHandler {
     pub fn new(utils: Arc<ApplicationCommandUtilities>) -> Self {
-        Self { utils }
+        // TODO: Start a thread to keep track of the matchmaking instances.
+
+        Self {
+            utils,
+            sessions: DashMap::new(),
+        }
     }
 
     async fn start_matchmaking_thread(
@@ -170,5 +204,23 @@ impl MatchmakingCommandHandler {
         Err(anyhow!(
             "The server has not enabled a default matchmaking channel"
         ))
+    }
+
+    async fn add_users_to_thread(
+        &self,
+        thread_id: Id<ChannelMarker>,
+        users: impl IntoIterator<Item = &Id<UserMarker>>,
+    ) -> anyhow::Result<()> {
+        self.utils.http_client.join_thread(thread_id).exec().await?;
+
+        for user in users {
+            self.utils
+                .http_client
+                .add_thread_member(thread_id, *user)
+                .exec()
+                .await?;
+        }
+
+        Ok(())
     }
 }
