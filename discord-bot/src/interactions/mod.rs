@@ -8,7 +8,7 @@ use entity::sea_orm::{prelude::Uuid, DatabaseConnection};
 
 use futures::future::BoxFuture;
 use tokio::time::{timeout, Timeout};
-use tracing::Level;
+use tracing::{Instrument, Level};
 use twilight_cache_inmemory::InMemoryCache;
 use twilight_gateway::Shard;
 use twilight_model::{
@@ -183,7 +183,7 @@ impl InteractionProcessor {
                             let name = data.command.data.name.clone();
                             let token = data.command.token.clone();
                             let runback_id = data.id.clone();
-                            let timeout = timeout(Duration::from_secs(5), handler.process_command(data));
+                            let timeout = timeout(Duration::from_secs(5), handler.process_command(data).instrument(info_span!("command_handler")));
                             let res = timeout.await;
                             match res {
                                 Ok(res) => {
