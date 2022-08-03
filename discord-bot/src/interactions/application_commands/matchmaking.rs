@@ -3,13 +3,22 @@ use dashmap::DashMap;
 use entity::sea_orm::prelude::{DateTimeUtc, Uuid};
 use twilight_model::{
     application::command::{BaseCommandOptionData, CommandOption, CommandType},
-    channel::{thread::AutoArchiveDuration, Channel, ChannelType},
+    channel::{
+        message::{allowed_mentions::AllowedMentionsBuilder, AllowedMentions},
+        thread::AutoArchiveDuration,
+        Channel, ChannelType,
+    },
+    http::interaction::{InteractionResponse, InteractionResponseData, InteractionResponseType},
     id::{
-        marker::{ChannelMarker, GuildMarker, UserMarker},
+        marker::{ChannelMarker, GuildMarker, InteractionMarker, UserMarker},
         Id,
     },
 };
-use twilight_util::builder::command::{CommandBuilder, SubCommandBuilder};
+use twilight_util::builder::{
+    command::{CommandBuilder, SubCommandBuilder},
+    embed::{EmbedBuilder, EmbedFieldBuilder},
+    InteractionResponseDataBuilder,
+};
 
 use super::{
     ApplicationCommandData, ApplicationCommandUtilities, CommandGroupDescriptor,
@@ -53,25 +62,21 @@ impl InteractionHandler for MatchmakingCommandHandler {
                 required: true,
             }))
             .build(),
-        );
+        )
         // .option(
         //     SubCommandBuilder::new("show-matches".into(), "Show the matchmaking menu".into())
         //         .build(),
         // )
-        // .option(
-        //     SubCommandBuilder::new(
-        //         "settings".into(),
-        //         "View and update settings such as default character".into(),
-        //     )
-        //     .build(),
-        // )
-        // .option(
-        //     SubCommandBuilder::new(
-        //         "end-session".into(),
-        //         "Finish your matchmaking session".into(),
-        //     )
-        //     .build(),
-        // );
+        .option(
+            SubCommandBuilder::new(
+                "settings".into(),
+                "View and update settings such as default character".into(),
+            )
+            .build(),
+        )
+        .option(
+            SubCommandBuilder::new("done".into(), "Finish your matchmaking session".into()).build(),
+        );
 
         let command = builder.build();
         CommandGroupDescriptor {
@@ -139,17 +144,16 @@ impl InteractionHandler for MatchmakingCommandHandler {
             return Err(e);
         }
 
-        self.sessions.insert(
-            thread.id,
-            Session {
-                id: Uuid::new_v4(),
-                users,
-                thread: thread.id,
-                started_at: Utc::now(),
-            },
-        );
+        self.send_thread_opening_message(&users, thread.id).await?;
 
-        // TODO: Send a message in the channel with some directions
+        let session = Session {
+            id: Uuid::new_v4(),
+            users,
+            thread: thread.id,
+            started_at: Utc::now(),
+        };
+
+        self.sessions.insert(thread.id, session);
 
         Ok(())
     }
@@ -177,6 +181,54 @@ impl MatchmakingCommandHandler {
         }
     }
 
+    async fn send_thread_opening_message(
+        &self,
+        users: impl IntoIterator<Item = &Id<UserMarker>>,
+        channel: Id<ChannelMarker>,
+    ) -> anyhow::Result<()> {
+        let msg = self
+            .utils
+            .http_client
+            .create_message(channel)
+            .allowed_mentions(Some(
+                &AllowedMentionsBuilder::new()
+                    .user_ids(users.into_iter().map(|id| id.to_owned()))
+                    .build(),
+            ))
+            .embeds(&[EmbedBuilder::new()
+                .description(
+                    "**Thank you for using Runback. \
+                        Below are a list of commands to assist you during your matches.**",
+                )
+                .field(
+                    EmbedFieldBuilder::new(
+                        "/matchmaking report",
+                        "Report the score for your match",
+                    )
+                    .build(),
+                )
+                .field(
+                    EmbedFieldBuilder::new(
+                        "/matchmaking done",
+                        "Finish matchmaking and finalize results",
+                    )
+                    .build(),
+                )
+                .field(
+                    EmbedFieldBuilder::new(
+                        "/matchmaking settings",
+                        "Set the settings of the lobby.",
+                    )
+                    .build(),
+                )
+                .validate()?
+                .build()])?
+            .exec()
+            .await?;
+
+        Ok(())
+    }
+
     async fn start_matchmaking_thread(
         &self,
         guild: Id<GuildMarker>,
@@ -192,6 +244,7 @@ impl MatchmakingCommandHandler {
                 .http_client
                 .create_thread(channel, name, ChannelType::GuildPublicThread)?
                 .invitable(true)
+                // archive in 3 hours
                 .auto_archive_duration(AutoArchiveDuration::Day)
                 .exec()
                 .await?
