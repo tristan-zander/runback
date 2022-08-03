@@ -30,7 +30,6 @@ twilight-gateway = "0.11.0"
 twilight-http = "0.11.0"
 twilight-model = "0.11.0"
 twilight-standby = "0.11.0"
-twilight-embed-builder = "0.11.0"
 twilight-mention = "0.11.0"
 twilight-validate = "0.11.0"
 twilight-util = { version = "0.11.0", features = ["full"] }
