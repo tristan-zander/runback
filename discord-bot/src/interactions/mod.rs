@@ -1,21 +1,24 @@
 pub mod application_commands;
 pub mod panels;
 
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use dashmap::DashMap;
 use entity::sea_orm::{prelude::Uuid, DatabaseConnection};
 
 use futures::future::BoxFuture;
+use tokio::time::{timeout, Timeout};
 use tracing::Level;
 use twilight_cache_inmemory::InMemoryCache;
 use twilight_gateway::Shard;
 use twilight_model::{
     application::{command::Command, interaction::Interaction},
     gateway::payload::incoming::InteractionCreate,
+    http::interaction::{InteractionResponse, InteractionResponseType},
     id::{marker::CommandMarker, Id},
 };
 use twilight_standby::Standby;
+use twilight_util::builder::embed::{EmbedBuilder, EmbedFieldBuilder, EmbedFooterBuilder};
 
 use crate::interactions::application_commands::{
     lfg::LfgCommandHandler, ApplicationCommandData, ApplicationCommandUtilities,
@@ -173,7 +176,46 @@ impl InteractionProcessor {
                         id: Uuid::new_v4(),
                     });
                     let handler = handler.clone();
-                    let fut = Box::pin(async move { handler.process_command(data).await });
+                    let utils = self.utils.clone();
+                    let fut = Box::pin(
+                        async move {
+                            utils.http_client.interaction(utils.application_id).create_response(data.command.id, data.command.token.as_str(), &InteractionResponse { kind: InteractionResponseType::DeferredChannelMessageWithSource, data: None }).exec().await?;
+                            let name = data.command.data.name.clone();
+                            let token = data.command.token.clone();
+                            let runback_id = data.id.clone();
+                            let timeout = timeout(Duration::from_secs(5), handler.process_command(data));
+                            let res = timeout.await;
+                            match res {
+                                Ok(res) => {
+                                    if let Err(e) = res {
+                                        utils
+                                            .http_client
+                                            .interaction(utils.application_id)
+                                            .update_response(token.as_str())
+                                            .content(Some(format!("{}", e).as_str()))?
+                                            .embeds(Some(&[
+                                                EmbedBuilder::new()
+                                                    .description("An error has occurred.")
+                                                    .footer(EmbedFooterBuilder::new(runback_id.to_hyphenated_ref().to_string()).build())
+                                                    .field(
+                                                        EmbedFieldBuilder::new("error", e.to_string()).build()
+                                                    )
+                                                    .validate()?
+                                                    .build()
+                                            ]))?
+                                            .exec()
+                                            .await?;
+                                    }
+
+                                    return Ok(());
+                                },
+                                Err(_) => {
+                                    utils.http_client.interaction(utils.application_id).update_response(token.as_str()).content(Some("Command timed out."))?.exec().await?;
+                                    return Err(anyhow!("Command timed out: {}", name));
+                                },
+                            }
+                            // handler.process_command(data).await 
+                        });
                     return Ok(fut);
                 } else {
                     error!(name = ?command.data.name,"No command handler found");
