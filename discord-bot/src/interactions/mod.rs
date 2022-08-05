@@ -153,7 +153,6 @@ impl InteractionProcessor {
         Ok(())
     }
 
-    #[tracing::instrument(skip_all)]
     pub fn handle_interaction<'shard>(
         &self,
         interaction: InteractionCreate,

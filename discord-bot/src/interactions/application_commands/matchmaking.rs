@@ -1,23 +1,22 @@
 use chrono::Utc;
 use dashmap::DashMap;
 use entity::sea_orm::prelude::{DateTimeUtc, Uuid};
+use tokio::task::JoinHandle;
+use twilight_gateway::Event;
 use twilight_model::{
     application::command::{BaseCommandOptionData, CommandOption, CommandType},
     channel::{
-        message::{allowed_mentions::AllowedMentionsBuilder, AllowedMentions},
-        thread::AutoArchiveDuration,
-        Channel, ChannelType,
+        message::allowed_mentions::AllowedMentionsBuilder, thread::AutoArchiveDuration, Channel,
+        ChannelType,
     },
-    http::interaction::{InteractionResponse, InteractionResponseData, InteractionResponseType},
     id::{
-        marker::{ChannelMarker, GuildMarker, InteractionMarker, UserMarker},
+        marker::{ChannelMarker, GuildMarker, UserMarker},
         Id,
     },
 };
 use twilight_util::builder::{
     command::{CommandBuilder, SubCommandBuilder},
     embed::{EmbedBuilder, EmbedFieldBuilder},
-    InteractionResponseDataBuilder,
 };
 
 use super::{
@@ -25,20 +24,31 @@ use super::{
     InteractionHandler, MessageComponentData,
 };
 
-use std::sync::Arc;
+use futures::StreamExt;
+
+use std::{
+    ops::Add,
+    sync::Arc,
+    time::{Duration, Instant},
+};
+
+// TODO: Make this 3 hours after testing
+// const TIMEOUT_AFTER: Duration = chrono::Duration::hours(3);
+static TIMEOUT_AFTER: Duration = Duration::from_secs(60);
 
 #[derive(Debug, Clone)]
 struct Session {
-    id: Uuid,
-    users: Vec<Id<UserMarker>>,
-    thread: Id<ChannelMarker>,
-    started_at: DateTimeUtc,
+    pub id: Uuid,
+    pub users: Vec<Id<UserMarker>>,
+    pub thread: Id<ChannelMarker>,
+    pub started_at: DateTimeUtc,
+    pub timeout_after: DateTimeUtc,
 }
 
-#[derive(Debug, Clone)]
 pub struct MatchmakingCommandHandler {
     utils: Arc<ApplicationCommandUtilities>,
-    sessions: DashMap<Id<ChannelMarker>, Session>,
+    sessions: Arc<DashMap<Id<ChannelMarker>, Session>>,
+    background_task: JoinHandle<()>,
 }
 
 #[async_trait]
@@ -146,14 +156,26 @@ impl InteractionHandler for MatchmakingCommandHandler {
 
         self.send_thread_opening_message(&users, thread.id).await?;
 
+        let started_at = Utc::now();
         let session = Session {
             id: Uuid::new_v4(),
             users,
             thread: thread.id,
-            started_at: Utc::now(),
+            started_at,
+            timeout_after: started_at.add(chrono::Duration::from_std(TIMEOUT_AFTER).unwrap()),
         };
 
         self.sessions.insert(thread.id, session);
+
+        self.utils
+            .http_client
+            .interaction(self.utils.application_id)
+            .update_response(data.command.token.as_str())
+            .content(Some(
+                format!("Started thread for matchmaking: #{}", thread.id).as_str(),
+            ))?
+            .exec()
+            .await?;
 
         Ok(())
     }
@@ -174,10 +196,50 @@ impl InteractionHandler for MatchmakingCommandHandler {
 impl MatchmakingCommandHandler {
     pub fn new(utils: Arc<ApplicationCommandUtilities>) -> Self {
         // TODO: Start a thread to keep track of the matchmaking instances.
+        let sessions = Arc::new(DashMap::with_shard_amount(4));
+        let s = Arc::clone(&sessions);
+        let u = Arc::clone(&utils);
+        let background_task = tokio::task::spawn(async move {
+            let sessions = s;
+            let utils = u;
+
+            let s = sessions.clone();
+            let mut stream = utils
+                .standby
+                .wait_for_event_stream(move |e: &Event| match e {
+                    Event::ChannelDelete(chan) => {
+                        return s.contains_key(&chan.id);
+                    }
+                    _ => return false,
+                });
+
+            let mut interval = tokio::time::interval(Duration::from_secs(30));
+
+            loop {
+                tokio::select! {
+                    _ = interval.tick() => {
+                        let start = Instant::now();
+                        let s_count = sessions.len();
+                        debug!(num_sessions = ?s_count, "Filtering sessions");
+
+                        let now = Utc::now();
+                        // TODO: Return all the removed sessions.
+                        sessions.retain(|_key, val: &mut Session| val.timeout_after > now);
+
+                        let end = start.elapsed();
+                        debug!(end = ?end, time_ms = ?end.as_millis(), sessions_removed = ?s_count - sessions.len(), "Finished filtering sessions");
+                    }
+                    chan_delete = stream.next() => {
+                        debug!(del = ?format!("{:?}", chan_delete), "Channel was deleted");
+                    }
+                }
+            }
+        });
 
         Self {
             utils,
-            sessions: DashMap::new(),
+            sessions,
+            background_task,
         }
     }
 
