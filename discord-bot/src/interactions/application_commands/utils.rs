@@ -11,7 +11,7 @@ use twilight_model::{
     },
 };
 
-use twilight_http::Client as DiscordHttpClient;
+use twilight_http::{client::ClientBuilder, Client as DiscordHttpClient};
 use twilight_standby::Standby;
 
 use std::sync::Arc;
@@ -36,7 +36,10 @@ impl ApplicationCommandUtilities {
         cache: Arc<InMemoryCache>,
         standby: Arc<Standby>,
     ) -> anyhow::Result<Self> {
-        let http_client = DiscordHttpClient::new(crate::CONFIG.token.clone());
+        let http_client = ClientBuilder::new()
+            .token(crate::CONFIG.token.to_owned())
+            .build();
+
         let application_id = {
             let response = http_client.current_user_application().exec().await?;
             response.model().await?.id
@@ -50,6 +53,7 @@ impl ApplicationCommandUtilities {
         ))
     }
 
+    // TODO: Remove this and use Builder patternj
     pub fn new_with_application_id(
         db: Arc<Box<DatabaseConnection>>,
         application_id: Id<ApplicationMarker>,
@@ -58,7 +62,9 @@ impl ApplicationCommandUtilities {
     ) -> Self {
         Self {
             db,
-            http_client: DiscordHttpClient::new(crate::CONFIG.token.clone()),
+            http_client: ClientBuilder::new()
+                .token(crate::CONFIG.token.to_owned())
+                .build(),
             application_id,
             cache,
             standby,

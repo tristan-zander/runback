@@ -66,44 +66,37 @@ impl InteractionHandler for MatchmakingSettingsHandler {
 
         debug!(channels = %format!("{:?}", text_channels), "Collected text channels");
 
-        let message = InteractionResponse {
-            kind: InteractionResponseType::ChannelMessageWithSource,
-            data: Some(
-                InteractionResponseDataBuilder::new()
-                    .flags(MessageFlags::EPHEMERAL)
-                    .components(vec![Component::ActionRow(ActionRow {
-                        components: vec![Component::SelectMenu(SelectMenu {
-                            custom_id: "admin:settings:channel".into(),
-                            disabled: false,
-                            max_values: Some(1),
-                            min_values: Some(1),
-                            options: text_channels
-                                .iter()
-                                .map(|chan| SelectMenuOption {
-                                    default: false,
-                                    description: None,
-                                    emoji: None,
-                                    label: format!(
-                                        "#{}",
-                                        chan.name
-                                            .as_ref()
-                                            .expect("Guild text channel did not have a name")
-                                            .as_str()
-                                    ),
-                                    value: chan.id.to_string(),
-                                })
-                                .collect::<Vec<SelectMenuOption>>(),
-                            placeholder: Some("Select the default matchmaking channel".into()),
-                        })],
-                    })])
-                    .build(),
-            ),
-        };
-
         self.utils
-            .send_message(command, &message)
-            .await
-            .map_err(|e| anyhow!("Could not send message: {}", e))?;
+            .http_client
+            .interaction(self.utils.application_id)
+            .update_response(command.token.as_str())
+            .components(Some(&[Component::ActionRow(ActionRow {
+                components: vec![Component::SelectMenu(SelectMenu {
+                    custom_id: "admin:settings:channel".into(),
+                    disabled: false,
+                    max_values: Some(1),
+                    min_values: Some(1),
+                    options: text_channels
+                        .iter()
+                        .map(|chan| SelectMenuOption {
+                            default: false,
+                            description: None,
+                            emoji: None,
+                            label: format!(
+                                "#{}",
+                                chan.name
+                                    .as_ref()
+                                    .expect("Guild text channel did not have a name")
+                                    .as_str()
+                            ),
+                            value: chan.id.to_string(),
+                        })
+                        .collect::<Vec<SelectMenuOption>>(),
+                    placeholder: Some("Select the default matchmaking channel".into()),
+                })],
+            })]))?
+            .exec()
+            .await?;
 
         Ok(())
     }

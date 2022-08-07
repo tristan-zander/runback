@@ -99,7 +99,10 @@ pub mod lfg {
 
 /// MM settings are set one per server
 pub mod settings {
-    use twilight_model::id::marker::{ChannelMarker, GuildMarker};
+    use twilight_model::id::{
+        marker::{ChannelMarker, GuildMarker},
+        Id,
+    };
 
     use crate::IdWrapper;
 
@@ -114,8 +117,10 @@ pub mod settings {
         pub last_updated: DateTimeUtc,
         /// Set the date that a guild admin accepted the EULA
         // TODO: Make a general Guild table and put this field there
+        #[sea_orm(default_value = None)]
         pub has_accepted_eula: Option<DateTimeUtc>,
         /// The channel ID for where the matchmaking panel should be posted.
+        #[sea_orm(default_value = None)]
         pub channel_id: Option<IdWrapper<ChannelMarker>>,
         #[sea_orm(default_value = false)]
         pub threads_are_private: bool,
