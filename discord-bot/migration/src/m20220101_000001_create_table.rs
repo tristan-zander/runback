@@ -5,6 +5,8 @@ use entity::{
     matchmaking::{self, lobby::LobbyPrivacy},
 };
 
+use chrono::Utc;
+
 pub struct Migration;
 
 impl MigrationName for Migration {
@@ -152,7 +154,9 @@ impl MigrationTrait for Migration {
                     )
                     .col(
                         ColumnDef::new(matchmaking::settings::Column::LastUpdated)
-                            .timestamp_with_time_zone(),
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Utc::now()),
                     )
                     .col(ColumnDef::new(matchmaking::settings::Column::ChannelId).big_integer())
                     .col(

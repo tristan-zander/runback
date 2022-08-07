@@ -36,19 +36,20 @@ use std::{
 // const TIMEOUT_AFTER: Duration = chrono::Duration::hours(3);
 static TIMEOUT_AFTER: Duration = Duration::from_secs(60);
 
+// TODO: Don't use a model like this. Use the sea_orm model that's stored in the database
 #[derive(Debug, Clone)]
 struct Session {
-    pub id: Uuid,
-    pub users: Vec<Id<UserMarker>>,
+    pub _id: Uuid,
+    pub _users: Vec<Id<UserMarker>>,
     pub thread: Id<ChannelMarker>,
-    pub started_at: DateTimeUtc,
+    pub _started_at: DateTimeUtc,
     pub timeout_after: DateTimeUtc,
 }
 
 pub struct MatchmakingCommandHandler {
     utils: Arc<ApplicationCommandUtilities>,
     sessions: Arc<DashMap<Id<ChannelMarker>, Session>>,
-    background_task: JoinHandle<()>,
+    _background_task: JoinHandle<()>,
 }
 
 #[async_trait]
@@ -86,6 +87,9 @@ impl InteractionHandler for MatchmakingCommandHandler {
         )
         .option(
             SubCommandBuilder::new("done".into(), "Finish your matchmaking session".into()).build(),
+        )
+        .option(
+            SubCommandBuilder::new("report-score".into(), "Report the score of a match".into()).build(),
         );
 
         let command = builder.build();
@@ -158,10 +162,10 @@ impl InteractionHandler for MatchmakingCommandHandler {
 
         let started_at = Utc::now();
         let session = Session {
-            id: Uuid::new_v4(),
-            users,
+            _id: Uuid::new_v4(),
+            _users: users,
             thread: thread.id,
-            started_at,
+            _started_at: started_at,
             timeout_after: started_at.add(chrono::Duration::from_std(TIMEOUT_AFTER).unwrap()),
         };
 
@@ -215,6 +219,8 @@ impl MatchmakingCommandHandler {
 
             let mut interval = tokio::time::interval(Duration::from_secs(30));
 
+            let mut thread_ids_to_remove = Vec::new();
+
             loop {
                 tokio::select! {
                     _ = interval.tick() => {
@@ -223,8 +229,26 @@ impl MatchmakingCommandHandler {
                         debug!(num_sessions = ?s_count, "Filtering sessions");
 
                         let now = Utc::now();
-                        // TODO: Return all the removed sessions.
-                        sessions.retain(|_key, val: &mut Session| val.timeout_after > now);
+
+                        sessions.retain(|_key, val: &mut Session| {
+                            let res = val.timeout_after > now;
+                            if res == true {
+                                thread_ids_to_remove.push(val.thread);
+                            }
+                            res
+                        });
+
+                        debug!(time_ms = ?start.elapsed(), "Found all bad sessions");
+
+                        for thread in &thread_ids_to_remove {
+                            let fut = Self::timeout_matchmaking_session(*thread, utils.as_ref());
+                            // TODO: Store this in a FuturesUnordered and send any errors back to the parent struct (Prob best to do through a channel)
+                            if let Err(e) = fut.await {
+                                error!(error = ?e, "Failure to delete thread");
+                            }
+                        }
+
+                        thread_ids_to_remove.clear();
 
                         let end = start.elapsed();
                         debug!(end = ?end, time_ms = ?end.as_millis(), sessions_removed = ?s_count - sessions.len(), "Finished filtering sessions");
@@ -239,8 +263,19 @@ impl MatchmakingCommandHandler {
         Self {
             utils,
             sessions,
-            background_task,
+            _background_task: background_task,
         }
+    }
+
+    async fn timeout_matchmaking_session(
+        thread: Id<ChannelMarker>,
+        utils: &ApplicationCommandUtilities,
+    ) -> anyhow::Result<()> {
+        // TODO: Send a message, declaring the timeout of the session.
+
+        utils.http_client.delete_channel(thread).exec().await?;
+
+        Ok(())
     }
 
     async fn send_thread_opening_message(
@@ -248,7 +283,7 @@ impl MatchmakingCommandHandler {
         users: impl IntoIterator<Item = &Id<UserMarker>>,
         channel: Id<ChannelMarker>,
     ) -> anyhow::Result<()> {
-        let msg = self
+        let _msg = self
             .utils
             .http_client
             .create_message(channel)

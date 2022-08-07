@@ -187,6 +187,8 @@ impl InteractionProcessor {
                             match res {
                                 Ok(res) => {
                                     if let Err(e) = res {
+                                        error!(error = ?e, "Application Command Failed");
+                                        debug!(error = ?format!("{:?}", e), "Application Command Failed");
                                         utils
                                             .http_client
                                             .interaction(utils.application_id)
