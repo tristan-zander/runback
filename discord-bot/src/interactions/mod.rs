@@ -12,6 +12,7 @@ use twilight_cache_inmemory::InMemoryCache;
 use twilight_gateway::Shard;
 use twilight_model::{
     application::{command::Command, interaction::Interaction},
+    channel::message::MessageFlags,
     gateway::payload::incoming::InteractionCreate,
     http::interaction::{InteractionResponse, InteractionResponseType},
     id::{marker::CommandMarker, Id},
@@ -190,9 +191,10 @@ impl InteractionProcessor {
                                         utils
                                             .http_client
                                             .interaction(utils.application_id)
-                                            .update_response(token.as_str())
-                                            .content(Some(format!("{}", e).as_str()))?
-                                            .embeds(Some(&[
+                                            .create_followup(token.as_str())
+                                            .flags(MessageFlags::EPHEMERAL)
+                                            .content(format!("```\n{}\n```", e).as_str())?
+                                            .embeds(&[
                                                 EmbedBuilder::new()
                                                     .description("An error has occurred.")
                                                     .footer(EmbedFooterBuilder::new(runback_id.to_hyphenated_ref().to_string()).build())
@@ -201,7 +203,7 @@ impl InteractionProcessor {
                                                     )
                                                     .validate()?
                                                     .build()
-                                            ]))?
+                                            ])?
                                             .exec()
                                             .await?;
                                     }

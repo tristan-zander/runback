@@ -4,7 +4,9 @@ use entity::sea_orm::prelude::{DateTimeUtc, Uuid};
 use tokio::task::JoinHandle;
 use twilight_gateway::Event;
 use twilight_model::{
-    application::command::{BaseCommandOptionData, CommandOption, CommandType},
+    application::command::{
+        BaseCommandOptionData, ChoiceCommandOptionData, CommandOption, CommandType,
+    },
     channel::{
         message::allowed_mentions::AllowedMentionsBuilder, thread::AutoArchiveDuration, Channel,
         ChannelType,
@@ -72,6 +74,15 @@ impl InteractionHandler for MatchmakingCommandHandler {
                 name_localizations: None,
                 required: true,
             }))
+            .option(CommandOption::String(ChoiceCommandOptionData {
+                autocomplete: false,
+                choices: vec![],
+                description: "An invite message to your opponent".to_string(),
+                description_localizations: None,
+                name: "invitation".to_string(),
+                name_localizations: None,
+                required: false,
+            }))
             .build(),
         )
         // .option(
@@ -89,7 +100,8 @@ impl InteractionHandler for MatchmakingCommandHandler {
             SubCommandBuilder::new("done".into(), "Finish your matchmaking session".into()).build(),
         )
         .option(
-            SubCommandBuilder::new("report-score".into(), "Report the score of a match".into()).build(),
+            SubCommandBuilder::new("report-score".into(), "Report the score of a match".into())
+                .build(),
         );
 
         let command = builder.build();
@@ -174,10 +186,8 @@ impl InteractionHandler for MatchmakingCommandHandler {
         self.utils
             .http_client
             .interaction(self.utils.application_id)
-            .update_response(data.command.token.as_str())
-            .content(Some(
-                format!("Started thread for matchmaking: #{}", thread.id).as_str(),
-            ))?
+            .create_followup(data.command.token.as_str())
+            .content(format!("Started thread for matchmaking: <#{}>", thread.id).as_str())?
             .exec()
             .await?;
 
