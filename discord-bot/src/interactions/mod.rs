@@ -3,11 +3,10 @@ pub mod panels;
 
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use dashmap::DashMap;
 use entity::sea_orm::{prelude::Uuid, DatabaseConnection};
 
 use futures::future::BoxFuture;
-use tokio::time::{timeout, Timeout};
+use tokio::time::timeout;
 use tracing::{Instrument, Level};
 use twilight_cache_inmemory::InMemoryCache;
 use twilight_gateway::Shard;
@@ -21,8 +20,7 @@ use twilight_standby::Standby;
 use twilight_util::builder::embed::{EmbedBuilder, EmbedFieldBuilder, EmbedFooterBuilder};
 
 use crate::interactions::application_commands::{
-    lfg::LfgCommandHandler, ApplicationCommandData, ApplicationCommandUtilities,
-    MessageComponentData,
+    ApplicationCommandData, ApplicationCommandUtilities, MessageComponentData,
 };
 
 use self::application_commands::{
@@ -48,7 +46,7 @@ impl InteractionProcessor {
         standby: Arc<Standby>,
     ) -> anyhow::Result<Self> {
         let utils = Arc::new(ApplicationCommandUtilities::new(db, cache, standby).await?);
-        let lfg_sessions = Arc::new(DashMap::new());
+        // let lfg_sessions = Arc::new(DashMap::new());
 
         event!(Level::INFO, "Registering top-level command handlers");
 
@@ -59,10 +57,10 @@ impl InteractionProcessor {
             Arc::new(Box::new(AdminCommandHandler::new(utils.clone()))),
             Arc::new(Box::new(MatchmakingCommandHandler::new(utils.clone()))),
             Arc::new(Box::new(EulaCommandHandler::new(utils.clone()))),
-            Arc::new(Box::new(LfgCommandHandler {
-                utils: utils.clone(),
-                lfg_sessions,
-            })),
+            // Arc::new(Box::new(LfgCommandHandler {
+            //     utils: utils.clone(),
+            //     lfg_sessions,
+            // })),
         ];
 
         let mut this = Self {
