@@ -6,8 +6,6 @@ use entity::{
     IdWrapper,
 };
 use std::sync::Arc;
-use std::time::Duration;
-use tokio::time::sleep;
 use twilight_model::{
     application::command::{
         ChoiceCommandOptionData, CommandOption, CommandOptionChoice, CommandOptionValue,
