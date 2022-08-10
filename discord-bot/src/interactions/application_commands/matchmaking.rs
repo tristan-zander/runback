@@ -4,21 +4,26 @@ use entity::sea_orm::prelude::{DateTimeUtc, Uuid};
 use tokio::task::JoinHandle;
 use twilight_gateway::Event;
 use twilight_model::{
-    application::command::{
-        BaseCommandOptionData, ChoiceCommandOptionData, CommandOption, CommandType,
+    application::{
+        command::{BaseCommandOptionData, ChoiceCommandOptionData, CommandOption, CommandType},
+        component::{button::ButtonStyle, ActionRow, Button, Component},
     },
     channel::{
-        message::allowed_mentions::AllowedMentionsBuilder, thread::AutoArchiveDuration, Channel,
-        ChannelType,
+        message::{allowed_mentions::AllowedMentionsBuilder, MessageFlags},
+        thread::AutoArchiveDuration,
+        Channel,
     },
+    guild::Member,
+    http::interaction::{InteractionResponse, InteractionResponseType},
     id::{
-        marker::{ChannelMarker, GuildMarker, UserMarker},
+        marker::{ChannelMarker, GuildMarker, MessageMarker, UserMarker},
         Id,
     },
 };
 use twilight_util::builder::{
     command::{CommandBuilder, SubCommandBuilder},
     embed::{EmbedBuilder, EmbedFieldBuilder},
+    InteractionResponseDataBuilder,
 };
 
 use super::{
@@ -29,7 +34,6 @@ use super::{
 use futures::StreamExt;
 
 use std::{
-    ops::Add,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -41,16 +45,28 @@ static TIMEOUT_AFTER: Duration = Duration::from_secs(60);
 // TODO: Don't use a model like this. Use the sea_orm model that's stored in the database
 #[derive(Debug, Clone)]
 struct Session {
-    pub _id: Uuid,
-    pub _users: Vec<Id<UserMarker>>,
+    pub id: Uuid,
+    pub users: Vec<Id<UserMarker>>,
     pub thread: Id<ChannelMarker>,
-    pub _started_at: DateTimeUtc,
+    pub started_at: DateTimeUtc,
+    pub timeout_after: DateTimeUtc,
+}
+
+#[derive(Debug, Clone)]
+struct MatchInvitation {
+    pub id: Uuid,
+    /// The user that created the invitation
+    pub author: Id<UserMarker>,
+    pub invited: Option<Id<UserMarker>>,
+    pub message_id: Id<MessageMarker>,
+    pub channel_id: Id<ChannelMarker>,
     pub timeout_after: DateTimeUtc,
 }
 
 pub struct MatchmakingCommandHandler {
     utils: Arc<ApplicationCommandUtilities>,
     sessions: Arc<DashMap<Id<ChannelMarker>, Session>>,
+    invitations: Arc<DashMap<Id<MessageMarker>, MatchInvitation>>,
     _background_task: JoinHandle<()>,
 }
 
@@ -118,80 +134,90 @@ impl InteractionHandler for MatchmakingCommandHandler {
             // but a click interaction.
         }
 
-        let mut users = data
+        let member = data
+            .command
+            .member
+            .ok_or_else(|| anyhow!("command cannot be run in a DM"))?;
+
+        let user = member
+            .user
+            .ok_or_else(|| anyhow!("could not get user data for caller"))?;
+
+        let resolved = data
             .command
             .data
             .resolved
-            .as_ref()
-            .into_iter()
-            .flat_map(|r| r.users.keys().map(|id| id.to_owned()).collect::<Vec<_>>())
-            .collect::<Vec<_>>();
+            .ok_or_else(|| anyhow!("cannot get the resolved command user data"))?;
 
-        let owner_id = data
+        match data
             .command
-            .member
-            .as_ref()
-            .ok_or_else(|| anyhow!("Command cannot be used in a DM"))?
-            .user
-            .as_ref()
-            .ok_or_else(|| {
-                anyhow!("Could not get the Discord member's user field (structure is partial)")
-            })?
-            .id;
+            .data
+            .options
+            .get(0)
+            .ok_or_else(|| anyhow!("could not get subcommand option"))?
+            .name
+            .as_str()
+        {
+            "play-against" => {
+                let invited = resolved.users.values().nth(0).ok_or_else(|| {
+                    anyhow!("cannot get the user specified in \"play-against\" command")
+                })?;
 
-        users.push(owner_id);
+                let msg = self
+                    .utils
+                    .http_client
+                    .interaction(self.utils.application_id)
+                    .create_followup(data.command.token.as_str())
+                    .content(format!("<@{}> <@{}>", user.id, invited.id).as_str())?
+                    .embeds(&[EmbedBuilder::new()
+                        .title("New matchmaking request")
+                        .description(format!(
+                            "<@{}> has invited you to a match, <@{}>",
+                            user.id, invited.id
+                        ))
+                        .validate()?
+                        .build()])?
+                    .components(&[Component::ActionRow(ActionRow {
+                        components: vec![Component::Button(Button {
+                            custom_id: Some("matchmaking:accept".to_string()),
+                            disabled: false,
+                            emoji: None,
+                            label: Some("Accept".to_string()),
+                            style: ButtonStyle::Primary,
+                            url: None,
+                        })],
+                    })])?
+                    .allowed_mentions(Some(
+                        &AllowedMentionsBuilder::new()
+                            .user_ids([user.id, invited.id])
+                            .build(),
+                    ))
+                    .exec()
+                    .await?
+                    .model()
+                    .await?;
 
-        if users.len() == 0 {
-            return Err(anyhow!(
-                "Cannot start matchmaking without specifying an opponent"
-            ));
+                self.invitations.insert(
+                    msg.id,
+                    MatchInvitation {
+                        id: Uuid::new_v4(),
+                        author: user.id,
+                        invited: Some(invited.id),
+                        message_id: msg.id,
+                        timeout_after: Utc::now() + chrono::Duration::minutes(15),
+                        channel_id: msg.channel_id,
+                    },
+                );
+
+                return Ok(());
+            }
+            _ => {
+                return Err(anyhow!(
+                    "command handler for {} not found.",
+                    data.command.data.name.as_str()
+                ))
+            }
         }
-
-        let thread = self
-            .start_matchmaking_thread(
-                data.command
-                    .guild_id
-                    .ok_or_else(|| anyhow!("Command cannot be run in a DM"))?,
-                "Matchmaking test",
-            )
-            .await?;
-
-        let res = self.add_users_to_thread(thread.id, &users).await;
-
-        if let Err(e) = res {
-            // Close the thread and send an error.
-
-            self.utils
-                .http_client
-                .delete_channel(thread.id)
-                .exec()
-                .await?;
-
-            return Err(e);
-        }
-
-        self.send_thread_opening_message(&users, thread.id).await?;
-
-        let started_at = Utc::now();
-        let session = Session {
-            _id: Uuid::new_v4(),
-            _users: users,
-            thread: thread.id,
-            _started_at: started_at,
-            timeout_after: started_at.add(chrono::Duration::from_std(TIMEOUT_AFTER).unwrap()),
-        };
-
-        self.sessions.insert(thread.id, session);
-
-        self.utils
-            .http_client
-            .interaction(self.utils.application_id)
-            .create_followup(data.command.token.as_str())
-            .content(format!("Started thread for matchmaking: <#{}>", thread.id).as_str())?
-            .exec()
-            .await?;
-
-        Ok(())
     }
 
     async fn process_autocomplete(&self, _data: Box<ApplicationCommandData>) -> anyhow::Result<()> {
@@ -202,8 +228,129 @@ impl InteractionHandler for MatchmakingCommandHandler {
         unreachable!()
     }
 
-    async fn process_component(&self, _data: Box<MessageComponentData>) -> anyhow::Result<()> {
-        unreachable!()
+    async fn process_component(&self, data: Box<MessageComponentData>) -> anyhow::Result<()> {
+        let member = data
+            .message
+            .member
+            .ok_or_else(|| anyhow!("command cannot be run in a DM"))?;
+
+        let user = member
+            .user
+            .ok_or_else(|| anyhow!("could not get user data for caller"))?;
+
+        match data.action.as_str() {
+            "accept" => {
+                let invitation = self
+                    .invitations
+                    .get(&data.message.message.id)
+                    .ok_or_else(|| anyhow!("no invitation found"))?;
+
+                if let Some(invited) = invitation.invited {
+                    if invited != user.id {
+                        self.utils
+                            .http_client
+                            .interaction(self.utils.application_id)
+                            .create_response(
+                                data.message.id,
+                                data.message.token.as_str(),
+                                &InteractionResponse {
+                                    kind: InteractionResponseType::ChannelMessageWithSource,
+                                    data: Some(
+                                        InteractionResponseDataBuilder::new()
+                                            .content(
+                                                "You were not invited to this match.".to_string(),
+                                            )
+                                            .flags(MessageFlags::EPHEMERAL)
+                                            .build(),
+                                    ),
+                                },
+                            )
+                            .exec()
+                            .await?;
+
+                        return Ok(());
+                    }
+                }
+
+                let opponent = if let Some(invited) = invitation.invited {
+                    invited
+                } else {
+                    user.id
+                };
+
+                let guild_id = data
+                    .message
+                    .guild_id
+                    .ok_or_else(|| anyhow!("Command cannot be run in a DM"))?;
+
+                let author_data: Member = self
+                    .utils
+                    .http_client
+                    .guild_member(guild_id, invitation.author)
+                    .exec()
+                    .await?
+                    .model()
+                    .await?;
+                let opponent_data: Member = self
+                    .utils
+                    .http_client
+                    .guild_member(guild_id, opponent)
+                    .exec()
+                    .await?
+                    .model()
+                    .await?;
+
+                let thread = self
+                    .start_matchmaking_thread(
+                        guild_id,
+                        invitation.message_id,
+                        format!(
+                            "{} vs {}",
+                            author_data.nick.unwrap_or(author_data.user.name),
+                            opponent_data.nick.unwrap_or(opponent_data.user.name)
+                        ),
+                    )
+                    .await?;
+
+                let users = vec![opponent, invitation.author];
+                let res = self.add_users_to_thread(thread.id, &users).await;
+
+                if let Err(e) = res {
+                    // Close the thread and send an error.
+
+                    self.utils
+                        .http_client
+                        .delete_channel(thread.id)
+                        .exec()
+                        .await?;
+
+                    return Err(e);
+                }
+
+                self.send_thread_opening_message(&users, thread.id).await?;
+
+                let started_at = Utc::now();
+                let session = Session {
+                    id: Uuid::new_v4(),
+                    users,
+                    thread: thread.id,
+                    started_at,
+                    timeout_after: started_at + chrono::Duration::from_std(TIMEOUT_AFTER).unwrap(),
+                };
+
+                self.sessions.insert(thread.id, session);
+
+                self.utils
+                    .http_client
+                    .update_message(invitation.channel_id, invitation.message_id)
+                    .components(Some(&[]))?
+                    .exec()
+                    .await?;
+
+                Ok(())
+            }
+            _ => return Err(anyhow!("no handler for action: {}", data.action)),
+        }
     }
 }
 
@@ -211,8 +358,10 @@ impl MatchmakingCommandHandler {
     pub fn new(utils: Arc<ApplicationCommandUtilities>) -> Self {
         // TODO: Start a thread to keep track of the matchmaking instances.
         let sessions = Arc::new(DashMap::with_shard_amount(4));
+        let invitations = Arc::new(DashMap::with_shard_amount(4));
         let s = Arc::clone(&sessions);
         let u = Arc::clone(&utils);
+        let i = Arc::clone(&invitations);
         let background_task = tokio::task::spawn(async move {
             let sessions = s;
             let utils = u;
@@ -241,7 +390,7 @@ impl MatchmakingCommandHandler {
                         let now = Utc::now();
 
                         sessions.retain(|_key, val: &mut Session| {
-                            let res = val.timeout_after > now;
+                            let res = val.timeout_after <= now;
                             if res == true {
                                 thread_ids_to_remove.push(val.thread);
                             }
@@ -274,6 +423,7 @@ impl MatchmakingCommandHandler {
             utils,
             sessions,
             _background_task: background_task,
+            invitations,
         }
     }
 
@@ -339,7 +489,8 @@ impl MatchmakingCommandHandler {
     async fn start_matchmaking_thread(
         &self,
         guild: Id<GuildMarker>,
-        name: &str,
+        message: Id<MessageMarker>,
+        name: String,
     ) -> anyhow::Result<Channel> {
         let settings = self.utils.get_guild_settings(guild).await?;
 
@@ -349,8 +500,8 @@ impl MatchmakingCommandHandler {
             let thread = self
                 .utils
                 .http_client
-                .create_thread(channel, name, ChannelType::GuildPublicThread)?
-                .invitable(true)
+                .create_thread_from_message(channel, message, name.as_str())?
+                // .invitable(true)
                 // archive in 3 hours
                 .auto_archive_duration(AutoArchiveDuration::Day)
                 .exec()
