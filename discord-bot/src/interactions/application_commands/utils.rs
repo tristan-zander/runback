@@ -53,7 +53,6 @@ impl ApplicationCommandUtilities {
         ))
     }
 
-    // TODO: Remove this and use Builder patternj
     pub fn new_with_application_id(
         db: Arc<Box<DatabaseConnection>>,
         application_id: Id<ApplicationMarker>,
