@@ -193,7 +193,6 @@ impl InteractionProcessor {
                                             .interaction(utils.application_id)
                                             .create_followup(token.as_str())
                                             .flags(MessageFlags::EPHEMERAL)
-                                            .content(format!("```\n{}\n```", e).as_str())?
                                             .embeds(&[
                                                 EmbedBuilder::new()
                                                     .description("An error has occurred.")
