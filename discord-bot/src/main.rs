@@ -46,7 +46,7 @@ async fn main() -> Result<()> {
         .with_target(true)
         .with_max_level(Into::<tracing::Level>::into(CONFIG.as_ref().log_level))
         //.json()
-        .init();
+        .try_init()?;
 
     let db = connect_to_database()
         .await
