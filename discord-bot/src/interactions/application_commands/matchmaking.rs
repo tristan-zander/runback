@@ -2,6 +2,7 @@ use chrono::Utc;
 use dashmap::DashMap;
 use entity::sea_orm::prelude::{DateTimeUtc, Uuid};
 use tokio::task::JoinHandle;
+use tracing::Instrument;
 use twilight_gateway::Event;
 use twilight_model::{
     application::{
@@ -163,12 +164,28 @@ impl InteractionHandler for MatchmakingCommandHandler {
                     anyhow!("cannot get the user specified in \"play-against\" command")
                 })?;
 
+                let guild_settings = self
+                    .utils
+                    .get_guild_settings(
+                        data.command
+                            .guild_id
+                            .ok_or_else(|| anyhow!("command cannot be used in a DM"))?,
+                    )
+                    .await?;
+
+                let channel;
+                if let Some(cid) = guild_settings.channel_id {
+                    // TODO: make sure that the channel actually exists.
+                    channel = cid.into_id();
+                } else {
+                    channel = data.command.channel_id;
+                }
+
                 let msg = self
                     .utils
                     .http_client
-                    .interaction(self.utils.application_id)
-                    .create_followup(data.command.token.as_str())
-                    .content(format!("<@{}> <@{}>", user.id, invited.id).as_str())?
+                    .create_message(channel)
+                    .content(format!("<@{}>", invited.id).as_str())?
                     .embeds(&[EmbedBuilder::new()
                         .title("New matchmaking request")
                         .description(format!(
@@ -192,6 +209,18 @@ impl InteractionHandler for MatchmakingCommandHandler {
                             .user_ids([user.id, invited.id])
                             .build(),
                     ))
+                    .exec()
+                    .await?
+                    .model()
+                    .await?;
+
+                let _followup = self
+                    .utils
+                    .http_client
+                    .interaction(self.utils.application_id)
+                    .create_followup(data.command.token.as_str())
+                    .content(format!("Sent a request in <#{}>", channel).as_str())?
+                    .flags(MessageFlags::EPHEMERAL)
                     .exec()
                     .await?
                     .model()
@@ -390,8 +419,8 @@ impl MatchmakingCommandHandler {
                         let now = Utc::now();
 
                         sessions.retain(|_key, val: &mut Session| {
-                            let res = val.timeout_after <= now;
-                            if res == true {
+                            let res = val.timeout_after > now;
+                            if res == false {
                                 thread_ids_to_remove.push(val.thread);
                             }
                             res
@@ -417,7 +446,7 @@ impl MatchmakingCommandHandler {
                     }
                 }
             }
-        });
+        }.instrument(info_span!("background_thread")));
 
         Self {
             utils,
