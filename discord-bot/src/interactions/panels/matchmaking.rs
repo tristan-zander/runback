@@ -143,5 +143,10 @@ pub mod report_score {
         pub fn add_user(&mut self, name: String, score: u32) {
             self.user_scores.push(ScoreData { user: name, score });
         }
+
+        /// Send the ephemeral message
+        pub async fn send_panel() -> anyhow::Result<()> {
+            todo!()
+        }
     }
 }

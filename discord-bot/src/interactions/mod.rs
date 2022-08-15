@@ -57,7 +57,7 @@ impl InteractionProcessor {
             })),
             Arc::new(Box::new(AdminCommandHandler::new(utils.clone()))),
             Arc::new(Box::new(MatchmakingCommandHandler::new(utils.clone()))),
-            Arc::new(Box::new(EulaCommandHandler::new(utils.clone()))),
+            // Arc::new(Box::new(EulaCommandHandler::new(utils.clone()))),
             // Arc::new(Box::new(LfgCommandHandler {
             //     utils: utils.clone(),
             //     lfg_sessions,
@@ -174,7 +174,7 @@ impl InteractionProcessor {
                         id: Uuid::new_v4(),
                     });
                     let fut = Box::pin(
-                        Self::execute_application_command(handler.clone(), data, utils.clone())
+                        Self::execute_application_command(handler.clone(), data, self.utils.clone())
                     );
                     return Ok(fut);
                 } else {

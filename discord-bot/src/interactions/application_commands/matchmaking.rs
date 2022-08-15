@@ -11,14 +11,15 @@ use twilight_model::{
     channel::{
         message::{allowed_mentions::AllowedMentionsBuilder, MessageFlags},
         thread::AutoArchiveDuration,
-        Channel,
+        Channel, ChannelType, Message,
     },
-    guild::Member,
+    guild::{Guild, Member},
     http::interaction::{InteractionResponse, InteractionResponseType},
     id::{
         marker::{ChannelMarker, GuildMarker, MessageMarker, UserMarker},
         Id,
     },
+    user::User,
 };
 use twilight_util::builder::{
     command::{CommandBuilder, SubCommandBuilder},
@@ -61,6 +62,12 @@ struct MatchInvitation {
     pub message_id: Id<MessageMarker>,
     pub channel_id: Id<ChannelMarker>,
     pub timeout_after: DateTimeUtc,
+}
+
+impl MatchInvitation {
+    pub fn is_participating(&self, user: Id<UserMarker>) -> bool {
+        user == self.author || self.invited.map_or_else(|| false, |i| i == user)
+    }
 }
 
 pub struct MatchmakingCommandHandler {
@@ -194,14 +201,24 @@ impl InteractionHandler for MatchmakingCommandHandler {
                         .validate()?
                         .build()])?
                     .components(&[Component::ActionRow(ActionRow {
-                        components: vec![Component::Button(Button {
-                            custom_id: Some("matchmaking:accept".to_string()),
-                            disabled: false,
-                            emoji: None,
-                            label: Some("Accept".to_string()),
-                            style: ButtonStyle::Primary,
-                            url: None,
-                        })],
+                        components: vec![
+                            Component::Button(Button {
+                                custom_id: Some("matchmaking:accept".to_string()),
+                                disabled: false,
+                                emoji: None,
+                                label: Some("Accept".to_string()),
+                                style: ButtonStyle::Primary,
+                                url: None,
+                            }),
+                            Component::Button(Button {
+                                custom_id: Some("matchmaking:deny".to_string()),
+                                disabled: false,
+                                emoji: None,
+                                label: Some("Deny".to_string()),
+                                style: ButtonStyle::Danger,
+                                url: None,
+                            }),
+                        ],
                     })])?
                     .allowed_mentions(Some(
                         &AllowedMentionsBuilder::new()
@@ -377,6 +394,71 @@ impl InteractionHandler for MatchmakingCommandHandler {
 
                 Ok(())
             }
+            "deny" => {
+                // validate users
+                if !self.invitations.contains_key(&data.message.message.id) {
+                    return Err(anyhow!("could not find that match invitation"));
+                }
+
+                // cancel invitation
+                let (_key, invitation) = self
+                    .invitations
+                    .remove_if(&data.message.message.id, |_key, invitation| {
+                        if !invitation.is_participating(user.id) {
+                            return false;
+                        }
+                        true
+                    })
+                    .ok_or_else(|| anyhow!("you are not allowed to delete that invitation"))?;
+
+                // TODO: Cache this
+                let guild = self
+                    .utils
+                    .http_client
+                    .guild(
+                        data.message
+                            .guild_id
+                            .ok_or_else(|| anyhow!("you cannot use this command in a dm"))?,
+                    )
+                    .exec()
+                    .await?
+                    .model()
+                    .await?;
+
+                self.dm_users_upon_cancellation(&invitation, &user, &guild)
+                    .await?;
+
+                self.utils
+                    .http_client
+                    .update_message(invitation.channel_id, invitation.message_id)
+                    .components(Some(&[]))?
+                    .exec()
+                    .await?;
+
+                self.utils
+                    .http_client
+                    .interaction(self.utils.application_id)
+                    .create_response(
+                        data.message.id,
+                        data.message.token.as_str(),
+                        &InteractionResponse {
+                            kind: InteractionResponseType::ChannelMessageWithSource,
+                            data: Some(
+                                InteractionResponseDataBuilder::new()
+                                    .content(format!(
+                                        "Invitation for <#{}> cancelled.",
+                                        invitation.message_id
+                                    ))
+                                    .flags(MessageFlags::EPHEMERAL)
+                                    .build(),
+                            ),
+                        },
+                    )
+                    .exec()
+                    .await?;
+
+                Ok(())
+            }
             _ => return Err(anyhow!("no handler for action: {}", data.action)),
         }
     }
@@ -405,7 +487,7 @@ impl MatchmakingCommandHandler {
     async fn background_loop(
         sessions: Arc<DashMap<Id<ChannelMarker>, Session>>,
         utils: Arc<ApplicationCommandUtilities>,
-        interactions: Arc<DashMap<Id<MessageMarker>, MatchInvitation>>,
+        _interactions: Arc<DashMap<Id<MessageMarker>, MatchInvitation>>,
     ) {
         let mut stream = {
             let s = sessions.clone();
@@ -568,5 +650,69 @@ impl MatchmakingCommandHandler {
         }
 
         Ok(())
+    }
+
+    async fn dm_users_upon_cancellation(
+        &self,
+        invitation: &MatchInvitation,
+        user: &User,
+        guild: &Guild,
+    ) -> anyhow::Result<()> {
+        if user.id != invitation.author {
+            // send a message to the author
+            let msg = self
+                .dm_invited(invitation.author, user, guild, invitation)
+                .await?;
+        }
+        if invitation.invited.map_or_else(|| false, |i| i != user.id) {
+            // send a message to the invited
+            let invited = invitation.invited.unwrap();
+            let msg = self.dm_invited(invited, user, guild, invitation).await?;
+        }
+
+        Ok(())
+    }
+
+    async fn dm_invited(
+        &self,
+        user: Id<UserMarker>,
+        // The person that cancelled the invitation
+        canceller: &User,
+        guild: &Guild,
+        invitation: &MatchInvitation,
+    ) -> anyhow::Result<Message> {
+        // TODO: Cache this
+        let dm = self
+            .utils
+            .http_client
+            .create_private_channel(user)
+            .exec()
+            .await?
+            .model()
+            .await?;
+
+        debug_assert_eq!(
+            dm.kind,
+            ChannelType::Private,
+            "DM channel created by Discord was not private"
+        );
+
+        let msg = self
+            .utils
+            .http_client
+            .create_message(dm.id)
+            .content(
+                format!(
+                    "\"{}@{}\" cancelled your matchmaking request in \"{}\"",
+                    canceller.name, canceller.discriminator, guild.name
+                )
+                .as_str(),
+            )?
+            .exec()
+            .await?
+            .model()
+            .await?;
+
+        Ok(msg)
     }
 }
