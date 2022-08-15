@@ -2,7 +2,6 @@ use chrono::Utc;
 use dashmap::DashMap;
 use entity::sea_orm::prelude::{DateTimeUtc, Uuid};
 use tokio::task::JoinHandle;
-use tracing::Instrument;
 use twilight_gateway::Event;
 use twilight_model::{
     application::{
@@ -388,71 +387,78 @@ impl MatchmakingCommandHandler {
         // TODO: Start a thread to keep track of the matchmaking instances.
         let sessions = Arc::new(DashMap::with_shard_amount(4));
         let invitations = Arc::new(DashMap::with_shard_amount(4));
-        let s = Arc::clone(&sessions);
-        let u = Arc::clone(&utils);
-        let i = Arc::clone(&invitations);
-        let background_task = tokio::task::spawn(async move {
-            let sessions = s;
-            let utils = u;
-
-            let s = sessions.clone();
-            let mut stream = utils
-                .standby
-                .wait_for_event_stream(move |e: &Event| match e {
-                    Event::ChannelDelete(chan) => {
-                        return s.contains_key(&chan.id);
-                    }
-                    _ => return false,
-                });
-
-            let mut interval = tokio::time::interval(Duration::from_secs(30));
-
-            let mut thread_ids_to_remove = Vec::new();
-
-            loop {
-                tokio::select! {
-                    _ = interval.tick() => {
-                        let start = Instant::now();
-                        let s_count = sessions.len();
-                        debug!(num_sessions = ?s_count, "Filtering sessions");
-
-                        let now = Utc::now();
-
-                        sessions.retain(|_key, val: &mut Session| {
-                            let res = val.timeout_after > now;
-                            if res == false {
-                                thread_ids_to_remove.push(val.thread);
-                            }
-                            res
-                        });
-
-                        debug!(time_ms = ?start.elapsed(), "Found all bad sessions");
-
-                        for thread in &thread_ids_to_remove {
-                            let fut = Self::timeout_matchmaking_session(*thread, utils.as_ref());
-                            // TODO: Store this in a FuturesUnordered and send any errors back to the parent struct (Prob best to do through a channel)
-                            if let Err(e) = fut.await {
-                                error!(error = ?e, "Failure to delete thread");
-                            }
-                        }
-
-                        thread_ids_to_remove.clear();
-
-                        let end = start.elapsed();
-                        debug!(end = ?end, time_ms = ?end.as_millis(), sessions_removed = ?s_count - sessions.len(), "Finished filtering sessions");
-                    }
-                    chan_delete = stream.next() => {
-                        debug!(del = ?format!("{:?}", chan_delete), "Channel was deleted");
-                    }
-                }
-            }
-        }.instrument(info_span!("background_thread")));
+        let background_task = tokio::task::spawn(Self::background_loop(
+            sessions.clone(),
+            utils.clone(),
+            invitations.clone(),
+        ));
 
         Self {
             utils,
             sessions,
             _background_task: background_task,
             invitations,
+        }
+    }
+
+    #[instrument(skip_all)]
+    async fn background_loop(
+        sessions: Arc<DashMap<Id<ChannelMarker>, Session>>,
+        utils: Arc<ApplicationCommandUtilities>,
+        interactions: Arc<DashMap<Id<MessageMarker>, MatchInvitation>>,
+    ) {
+        let mut stream = {
+            let s = sessions.clone();
+            utils
+                .standby
+                .wait_for_event_stream(move |e: &Event| match e {
+                    Event::ChannelDelete(chan) => {
+                        return s.contains_key(&chan.id);
+                    }
+                    _ => return false,
+                })
+        };
+
+        let mut interval = tokio::time::interval(Duration::from_secs(30));
+
+        let mut thread_ids_to_remove = Vec::new();
+
+        loop {
+            tokio::select! {
+                _ = interval.tick() => {
+                    let start = Instant::now();
+                    let s_count = sessions.len();
+                    debug!(num_sessions = ?s_count, "Filtering sessions");
+
+                    let now = Utc::now();
+
+                    sessions.retain(|_key, val: &mut Session| {
+                        let res = val.timeout_after > now;
+                        if res == false {
+                            thread_ids_to_remove.push(val.thread);
+                        }
+                        res
+                    });
+
+                    debug!(time_ms = ?start.elapsed(), "Found all bad sessions");
+
+                    for thread in &thread_ids_to_remove {
+                        let fut = Self::timeout_matchmaking_session(*thread, utils.as_ref());
+                        // TODO: Store this in a FuturesUnordered and send any errors back to the parent struct (Prob best to do through a channel)
+                        if let Err(e) = fut.await {
+                            error!(error = ?e, "Failure to delete thread");
+                        }
+                    }
+
+                    thread_ids_to_remove.clear();
+
+                    let end = start.elapsed();
+                    debug!(end = ?end, time_ms = ?end.as_millis(), sessions_removed = ?s_count - sessions.len(), "Finished filtering sessions");
+                }
+                chan_delete = stream.next() => {
+                    debug!(del = ?format!("{:?}", chan_delete), "Channel was deleted");
+                }
+            }
         }
     }
 
