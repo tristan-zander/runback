@@ -27,10 +27,10 @@ impl InteractionHandler for AdminCommandHandler {
             "Admin configuration and management settings".into(),
             CommandType::ChatInput,
         )
-        .option(SubCommandBuilder::new(
-            "matchmaking-panels".into(),
-            "Add, edit, and remove matchmaking panels in your guild".into(),
-        ))
+        // .option(SubCommandBuilder::new(
+        //     "matchmaking-panels".into(),
+        //     "Add, edit, and remove matchmaking panels in your guild".into(),
+        // ))
         .option(SubCommandBuilder::new(
             "matchmaking-settings".into(),
             "Shows the matchmaking settings panel".into(),
