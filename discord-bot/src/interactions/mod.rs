@@ -173,49 +173,9 @@ impl InteractionProcessor {
                         command: *command.to_owned(),
                         id: Uuid::new_v4(),
                     });
-                    let handler = handler.clone();
-                    let utils = self.utils.clone();
                     let fut = Box::pin(
-                        async move {
-                            utils.http_client.interaction(utils.application_id).create_response(data.command.id, data.command.token.as_str(), &InteractionResponse { kind: InteractionResponseType::DeferredChannelMessageWithSource, data: None }).exec().await?;
-                            let name = data.command.data.name.clone();
-                            let token = data.command.token.clone();
-                            let runback_id = data.id.clone();
-                            let timeout = timeout(Duration::from_secs(5), handler.process_command(data).instrument(info_span!("command_handler")));
-                            let res = timeout.await;
-                            match res {
-                                Ok(res) => {
-                                    if let Err(e) = res {
-                                        error!(error = ?e, "Application Command Failed");
-                                        debug!(error = ?format!("{:?}", e), "Application Command Failed");
-                                        utils
-                                            .http_client
-                                            .interaction(utils.application_id)
-                                            .create_followup(token.as_str())
-                                            .flags(MessageFlags::EPHEMERAL)
-                                            .embeds(&[
-                                                EmbedBuilder::new()
-                                                    .description("An error has occurred.")
-                                                    .footer(EmbedFooterBuilder::new(runback_id.to_hyphenated_ref().to_string()).build())
-                                                    .field(
-                                                        EmbedFieldBuilder::new("error", e.to_string()).build()
-                                                    )
-                                                    .validate()?
-                                                    .build()
-                                            ])?
-                                            .exec()
-                                            .await?;
-                                    }
-
-                                    return Ok(());
-                                },
-                                Err(_) => {
-                                    utils.http_client.interaction(utils.application_id).update_response(token.as_str()).content(Some("Command timed out."))?.exec().await?;
-                                    return Err(anyhow!("Command timed out: {}", name));
-                                },
-                            }
-                            // handler.process_command(data).await 
-                        });
+                        Self::execute_application_command(handler.clone(), data, utils.clone())
+                    );
                     return Ok(fut);
                 } else {
                     error!(name = ?command.data.name,"No command handler found");
@@ -253,5 +213,73 @@ impl InteractionProcessor {
 
         trace!("Ended interaction response.");
         return Err(anyhow!("Interaction was unmatched"));
+    }
+
+    async fn execute_application_command(
+        handler: HandlerType,
+        data: Box<ApplicationCommandData>,
+        utils: Arc<ApplicationCommandUtilities>,
+    ) -> anyhow::Result<()> {
+        utils
+            .http_client
+            .interaction(utils.application_id)
+            .create_response(
+                data.command.id,
+                data.command.token.as_str(),
+                &InteractionResponse {
+                    kind: InteractionResponseType::DeferredChannelMessageWithSource,
+                    data: None,
+                },
+            )
+            .exec()
+            .await?;
+
+        let name = data.command.data.name.clone();
+        let token = data.command.token.clone();
+        let runback_id = data.id.clone();
+        let timeout = timeout(
+            Duration::from_secs(5),
+            handler
+                .process_command(data)
+                .instrument(info_span!("command_handler")),
+        );
+        let res = timeout.await;
+        match res {
+            Ok(res) => {
+                if let Err(e) = res {
+                    error!(error = ?e, "Application Command Failed");
+                    debug!(error = ?format!("{:?}", e), "Application Command Failed");
+                    utils
+                        .http_client
+                        .interaction(utils.application_id)
+                        .create_followup(token.as_str())
+                        .flags(MessageFlags::EPHEMERAL)
+                        .embeds(&[EmbedBuilder::new()
+                            .description("An error has occurred.")
+                            .footer(
+                                EmbedFooterBuilder::new(runback_id.to_hyphenated_ref().to_string())
+                                    .build(),
+                            )
+                            .field(EmbedFieldBuilder::new("error", e.to_string()).build())
+                            .validate()?
+                            .build()])?
+                        .exec()
+                        .await?;
+                }
+
+                return Ok(());
+            }
+            Err(_) => {
+                utils
+                    .http_client
+                    .interaction(utils.application_id)
+                    .update_response(token.as_str())
+                    .content(Some("Command timed out."))?
+                    .exec()
+                    .await?;
+                return Err(anyhow!("Command timed out: {}", name));
+            }
+        }
+        // handler.process_command(data).await
     }
 }
