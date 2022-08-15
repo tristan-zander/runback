@@ -27,8 +27,6 @@ use twilight_model::gateway::event::Event;
 
 use crate::interactions::InteractionProcessor;
 
-use anyhow::Result;
-
 mod client;
 mod config;
 mod error;
@@ -40,13 +38,14 @@ lazy_static! {
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
         .with_level(true)
         .with_target(true)
         .with_max_level(Into::<tracing::Level>::into(CONFIG.as_ref().log_level))
         //.json()
-        .try_init()?;
+        .try_init()
+        .map_err(|e| anyhow!(e))?;
 
     let db = connect_to_database()
         .await
