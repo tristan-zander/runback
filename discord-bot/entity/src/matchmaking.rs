@@ -100,7 +100,7 @@ pub mod lfg {
 /// MM settings are set one per server
 pub mod settings {
     use twilight_model::id::{
-        marker::{ChannelMarker, GuildMarker},
+        marker::{ChannelMarker, GuildMarker, RoleMarker},
         Id,
     };
 
@@ -122,6 +122,8 @@ pub mod settings {
         /// The channel ID for where the matchmaking panel should be posted.
         #[sea_orm(default_value = None)]
         pub channel_id: Option<IdWrapper<ChannelMarker>>,
+        #[sea_orm(default_value = None)]
+        pub admin_role: Option<IdWrapper<RoleMarker>>,
         #[sea_orm(default_value = false)]
         pub threads_are_private: bool,
     }

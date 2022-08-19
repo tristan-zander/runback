@@ -159,6 +159,7 @@ impl MigrationTrait for Migration {
                             .default(Utc::now()),
                     )
                     .col(ColumnDef::new(matchmaking::settings::Column::ChannelId).big_integer())
+                    .col(ColumnDef::new(matchmaking::settings::Column::AdminRole).big_integer())
                     .col(
                         ColumnDef::new(matchmaking::settings::Column::ThreadsArePrivate)
                             .boolean()

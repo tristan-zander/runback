@@ -2,13 +2,14 @@ use entity::{
     sea_orm::{DatabaseConnection, Set},
     IdWrapper,
 };
-use twilight_cache_inmemory::InMemoryCache;
+use twilight_cache_inmemory::{InMemoryCache, UpdateCache};
 use twilight_model::{
     http::interaction::InteractionResponse,
     id::{
-        marker::{ApplicationMarker, GuildMarker},
+        marker::{ApplicationMarker, GuildMarker, UserMarker},
         Id,
     },
+    user::User,
 };
 
 use twilight_http::{client::ClientBuilder, Client as DiscordHttpClient};
@@ -119,5 +120,15 @@ impl ApplicationCommandUtilities {
                 Ok(setting)
             }
         }
+    }
+
+    pub async fn get_user(&self, user: Id<UserMarker>) -> anyhow::Result<User> {
+        if let Some(user_ref) = self.cache.user(user) {
+            let user = user_ref.to_owned();
+            return Ok(user);
+        }
+
+        let user = self.http_client.user(user).exec().await?.model().await?;
+        Ok(user)
     }
 }
