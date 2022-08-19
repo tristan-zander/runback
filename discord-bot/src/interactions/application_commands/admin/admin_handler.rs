@@ -1,7 +1,10 @@
 use std::sync::Arc;
 
-use twilight_model::application::command::CommandType;
-use twilight_util::builder::command::{CommandBuilder, SubCommandBuilder};
+use twilight_model::application::command::{
+    BaseCommandOptionData, ChannelCommandOptionData, CommandOption, CommandType,
+};
+use twilight_model::channel::ChannelType;
+use twilight_util::builder::command::{CommandBuilder, SubCommandBuilder, SubCommandGroupBuilder};
 
 use crate::interactions::application_commands::{
     ApplicationCommandData, CommandGroupDescriptor, InteractionHandler, MessageComponentData,
@@ -31,10 +34,37 @@ impl InteractionHandler for AdminCommandHandler {
         //     "matchmaking-panels".into(),
         //     "Add, edit, and remove matchmaking panels in your guild".into(),
         // ))
-        .option(SubCommandBuilder::new(
-            "matchmaking-settings".into(),
-            "Shows the matchmaking settings panel".into(),
-        ));
+        .option(
+            SubCommandGroupBuilder::new(
+                "matchmaking-settings".into(),
+                "Shows the matchmaking settings panel".into(),
+            )
+            .subcommands([
+                SubCommandBuilder::new(
+                    "admin-role".to_string(),
+                    "Set which users can act as admins".to_string(),
+                )
+                .option(CommandOption::Role(BaseCommandOptionData {
+                    name: "role".to_string(),
+                    description: "The admin role (to disable, set to empty)".to_string(),
+                    description_localizations: None,
+                    name_localizations: None,
+                    required: false,
+                })),
+                SubCommandBuilder::new(
+                    "matchmaking-channel".to_string(),
+                    "Set the default matchmaking channel".to_string(),
+                )
+                .option(CommandOption::Channel(ChannelCommandOptionData {
+                    name: "channel".to_string(),
+                    description: "The matchmaking channel (to disable, set to empty)".to_string(),
+                    channel_types: vec![ChannelType::GuildText],
+                    description_localizations: None,
+                    name_localizations: None,
+                    required: false,
+                })),
+            ]),
+        );
 
         let command = builder.build();
         CommandGroupDescriptor {

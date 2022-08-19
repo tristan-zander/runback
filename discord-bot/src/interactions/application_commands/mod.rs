@@ -44,12 +44,14 @@ pub trait InteractionHandler {
     async fn process_component(&self, data: Box<MessageComponentData>) -> anyhow::Result<()>;
 }
 
+#[derive(Debug)]
 pub struct ApplicationCommandData {
     pub command: ApplicationCommand,
     pub id: Uuid,
     // pub cancellation_token
 }
 
+#[derive(Debug)]
 pub struct MessageComponentData {
     pub message: MessageComponentInteraction,
     pub action: String,
