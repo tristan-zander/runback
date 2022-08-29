@@ -3,12 +3,11 @@ use std::sync::Arc;
 use chrono::Utc;
 use entity::sea_orm::{ActiveModelTrait, EntityTrait, IntoActiveModel, Set};
 use twilight_model::{
-    application::{
-        component::{select_menu::SelectMenuOption, ActionRow, Component, SelectMenu},
-        interaction::{application_command::CommandOptionValue, MessageComponentInteraction},
+    application::interaction::{
+        application_command::CommandOptionValue, MessageComponentInteraction,
     },
-    channel::{message::MessageFlags, Channel, ChannelType},
-    guild::{Member, PartialMember, Permissions, Role},
+    channel::message::MessageFlags,
+    guild::{PartialMember, Permissions},
     http::interaction::{InteractionResponse, InteractionResponseType},
     id::{
         marker::{ChannelMarker, GuildMarker, RoleMarker},

@@ -258,7 +258,7 @@ impl InteractionHandler for MatchmakingCommandHandler {
             }
             _ => {
                 return Err(anyhow!(
-                    "command handler for {} not found.",
+                    "command handler anyhow::Error::new(error)for {} not found.",
                     data.command.data.name.as_str()
                 ))
             }
@@ -400,17 +400,6 @@ impl InteractionHandler for MatchmakingCommandHandler {
                     return Err(anyhow!("could not find that match invitation"));
                 }
 
-                // cancel invitation
-                let (_key, invitation) = self
-                    .invitations
-                    .remove_if(&data.message.message.id, |_key, invitation| {
-                        if !invitation.is_participating(user.id) {
-                            return false;
-                        }
-                        true
-                    })
-                    .ok_or_else(|| anyhow!("you are not allowed to delete that invitation"))?;
-
                 // TODO: Cache this
                 let guild = self
                     .utils
@@ -425,13 +414,58 @@ impl InteractionHandler for MatchmakingCommandHandler {
                     .model()
                     .await?;
 
-                self.dm_users_upon_cancellation(&invitation, &user, &guild)
-                    .await?;
+                let settings = self.utils.get_guild_settings(guild.id).await?;
 
+                let is_admin = if let Some(admin_role) = settings.admin_role {
+                    member.roles.contains(&admin_role.into_id())
+                } else {
+                    false
+                };
+
+                // cancel invitation
+                let (_key, invitation) = self
+                    .invitations
+                    .remove_if(&data.message.message.id, |_key, invitation| {
+                        if !is_admin && !invitation.is_participating(user.id) {
+                            return false;
+                        }
+                        true
+                    })
+                    .ok_or_else(|| anyhow!("you are not allowed to delete that invitation"))?;
+
+                let dm_res = self
+                    .dm_users_upon_cancellation(&invitation, &user, &guild)
+                    .await;
+
+                if let Err(e) = dm_res {
+                    error!(err = ?e, "could not dm user");
+
+                    // why wont this auto format?
+                    self.utils
+                        .http_client
+                        .interaction(self.utils.application_id)
+                        .create_response(data.message.id, data.message.token.as_str(),
+                        &InteractionResponse { kind: InteractionResponseType::ChannelMessageWithSource, data: Some(
+                            InteractionResponseDataBuilder::new()
+                        .flags(MessageFlags::EPHEMERAL)
+                        .embeds([
+                            EmbedBuilder::new().title("DM Error").description("Could not inform one or more of the users about the match cancellation.")
+                            .field(EmbedFieldBuilder::new("error", "The bot successfully denied the invitation, but it could not DM one or more of the users about the cancellation. Please notify them manually.").build())
+                            .build(),
+                        ])
+                        .build()
+                        ) }
+                    )
+                        .exec()
+                        .await?;
+                }
+
+                // Remove the Accept/Deny buttons from the message
                 self.utils
                     .http_client
                     .update_message(invitation.channel_id, invitation.message_id)
                     .components(Some(&[]))?
+                    .content(None)?
                     .exec()
                     .await?;
 
@@ -445,10 +479,7 @@ impl InteractionHandler for MatchmakingCommandHandler {
                             kind: InteractionResponseType::ChannelMessageWithSource,
                             data: Some(
                                 InteractionResponseDataBuilder::new()
-                                    .content(format!(
-                                        "Invitation for <#{}> cancelled.",
-                                        invitation.message_id
-                                    ))
+                                    .content("Invitation cancelled.".to_string())
                                     .flags(MessageFlags::EPHEMERAL)
                                     .build(),
                             ),
@@ -658,16 +689,26 @@ impl MatchmakingCommandHandler {
         user: &User,
         guild: &Guild,
     ) -> anyhow::Result<()> {
+        let mut err = None;
+
         if user.id != invitation.author {
             // send a message to the author
-            let msg = self
+            let res = self
                 .dm_invited(invitation.author, user, guild, invitation)
-                .await?;
+                .await;
+
+            if let Err(e) = res {
+                err = Some(anyhow!(e));
+            }
         }
         if invitation.invited.map_or_else(|| false, |i| i != user.id) {
             // send a message to the invited
             let invited = invitation.invited.unwrap();
-            let msg = self.dm_invited(invited, user, guild, invitation).await?;
+            self.dm_invited(invited, user, guild, invitation).await?;
+        }
+
+        if let Some(e) = err {
+            return Err(e);
         }
 
         Ok(())
