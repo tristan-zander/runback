@@ -97,15 +97,16 @@ impl InteractionHandler for MatchmakingCommandHandler {
                 name_localizations: None,
                 required: true,
             }))
-            .option(CommandOption::String(ChoiceCommandOptionData {
-                autocomplete: false,
-                choices: vec![],
-                description: "An invite message to your opponent".to_string(),
-                description_localizations: None,
-                name: "invitation".to_string(),
-                name_localizations: None,
-                required: false,
-            }))
+            // TODO: Add this when it's ready
+            // .option(CommandOption::String(ChoiceCommandOptionData {
+            //     autocomplete: false,
+            //     choices: vec![],
+            //     description: "An invite message to your opponent".to_string(),
+            //     description_localizations: None,
+            //     name: "invitation".to_string(),
+            //     name_localizations: None,
+            //     required: false,
+            // }))
             .build(),
         )
         // .option(
@@ -150,12 +151,6 @@ impl InteractionHandler for MatchmakingCommandHandler {
             .user
             .ok_or_else(|| anyhow!("could not get user data for caller"))?;
 
-        let resolved = data
-            .command
-            .data
-            .resolved
-            .ok_or_else(|| anyhow!("cannot get the resolved command user data"))?;
-
         match data
             .command
             .data
@@ -166,9 +161,19 @@ impl InteractionHandler for MatchmakingCommandHandler {
             .as_str()
         {
             "play-against" => {
+                let resolved = data
+                    .command
+                    .data
+                    .resolved
+                    .ok_or_else(|| anyhow!("cannot get the resolved command user data"))?;
+
                 let invited = resolved.users.values().nth(0).ok_or_else(|| {
                     anyhow!("cannot get the user specified in \"play-against\" command")
                 })?;
+
+                if invited.id == user.id {
+                    return Err(anyhow!("you cannot invite yourself"));
+                }
 
                 let guild_settings = self
                     .utils
@@ -256,9 +261,43 @@ impl InteractionHandler for MatchmakingCommandHandler {
 
                 return Ok(());
             }
+            "done" => {
+                if let Some((id, s)) = self.sessions.remove(&data.command.channel_id) {
+                    // TODO: Validate that the user is a part of the session.
+
+                    match self
+                        .utils
+                        .http_client
+                        .interaction(self.utils.application_id)
+                        .create_followup(data.command.token.as_str())
+                        .content("Closing the session soon. Thanks for using runback!")?
+                        .exec()
+                        .await
+                    {
+                        Ok(_) => tokio::time::sleep(Duration::from_secs(3)).await,
+                        Err(e) => {
+                            error!(error = ?e, "closing matchmaking channel success message failed to sendd")
+                        }
+                    }
+                    // self.utils.http_client.delete_channel(id).exec().await?;
+                    self.utils
+                        .http_client
+                        .update_thread(id)
+                        .archived(true)
+                        .locked(true)
+                        .exec()
+                        .await?;
+                } else {
+                    return Err(anyhow!(
+                        "You must run this command in a valid matchmaking thread."
+                    ));
+                }
+
+                Ok(())
+            }
             _ => {
                 return Err(anyhow!(
-                    "command handler anyhow::Error::new(error)for {} not found.",
+                    "command handler for {} not found.",
                     data.command.data.name.as_str()
                 ))
             }
