@@ -25,10 +25,10 @@ jobs:
           name: Test project
           command: "cargo test"
 
-  build-release:
-    docker:
-      # TODO: use Dockerfile within this repo
-      - image: alpine:3.16
+  # build-release:
+  #   docker:
+  #     # TODO: use Dockerfile within this repo
+  #     - image: alpine:3.16
 
 # Invoke jobs via workflows
 # See: https://circleci.com/docs/2.0/configuration-reference/#workflows
