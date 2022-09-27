@@ -46,3 +46,5 @@ workflows:
   #   jobs:
   #     - build-release
   # bot-publish-dockerfile-release:
+  # bot-notify-release: # Notifies the Release that it needs to update itself
+  # bot-notify-sandbox: # Notifies the Sandbox that it needs to update itself
