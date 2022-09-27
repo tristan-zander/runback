@@ -18,9 +18,15 @@ jobs:
       - run:
           name: Install Build Dependencies
           command: apk add --no-cache 'cargo>1.57' openssl openssl-dev pkgconfig librdkafka cmake make gcc g++
+      - restore_cache:
+          key: build-artifacts-{{ .Branch }}-{{ checksum Cargo.toml }}
       - run:
           name: Build project
           command: "cargo build"
+      - save_cache:
+          key: build-artifacts-{{ .Branch }}-{{ checksum Cargo.toml }}
+          paths:
+            - target
       - run:
           name: Test project
           command: "cargo test"
@@ -36,6 +42,7 @@ workflows:
   bot-test-pull-request:
     jobs:
       - build-development
-  # bot-build-release:
+  # bot-publish-github-release:
   #   jobs:
   #     - build-release
+  # bot-publish-dockerfile-release:
