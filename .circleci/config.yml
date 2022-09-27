@@ -19,12 +19,12 @@ jobs:
           name: Install Build Dependencies
           command: apk add --no-cache 'cargo>1.57' openssl openssl-dev pkgconfig librdkafka cmake make gcc g++
       - restore_cache:
-          key: build-artifacts-{{ .Branch }}-{{ checksum Cargo.toml }}
+          key: build-artifacts-{{ .Branch }}-{{ checksum "Cargo.toml" }}
       - run:
           name: Build project
           command: "cargo build"
       - save_cache:
-          key: build-artifacts-{{ .Branch }}-{{ checksum Cargo.toml }}
+          key: build-artifacts-{{ .Branch }}-{{ checksum "Cargo.toml" }}
           paths:
             - target
       - run:
