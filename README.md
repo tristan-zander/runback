@@ -1,6 +1,8 @@
 # Runback - Matchmaking and Tournament Bot
 A discord bot for holding tournament brackets, general matchmaking, and hosting ranked leagues.
 
+[![CircleCI](https://circleci.com/gh/tristan-zander/runback.svg?style=svg)](https://circleci.com/gh/tristan-zander/runback)
+
 ## Development
 In order to setup the development environment, make sure that you have Docker and docker-compose installed on your system.
 To test your development with live reloading, run the following command:
