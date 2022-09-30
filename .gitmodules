@@ -1,0 +1,6 @@
+[submodule "common"]
+	path = crates/common
+	url = git@github.com:tristan-zander/runback-common.git
+[submodule "discord-bot"]
+	path = crates/discord-bot
+	url = git@github.com:tristan-zander/runback-discord-bot.git
