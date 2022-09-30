@@ -1,6 +1,6 @@
 use std::error::Error;
 
-use migration::DbErr;
+use sea_orm::DbErr;
 use tracing::instrument::Instrumented;
 use twilight_gateway::cluster::ClusterStartError;
 use twilight_http::response::DeserializeBodyError;

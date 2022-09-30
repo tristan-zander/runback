@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
+use bot::entity::prelude::*;
+
 use chrono::Utc;
-use entity::sea_orm::{ActiveModelTrait, EntityTrait, IntoActiveModel, Set};
+use sea_orm::{ActiveModelTrait, EntityTrait, IntoActiveModel, Set};
 use twilight_model::{
     application::interaction::{
         application_command::CommandOptionValue, MessageComponentInteraction,
@@ -100,8 +102,9 @@ impl InteractionHandler for MatchmakingSettingsHandler {
                     )
                     .await?;
 
-                let mut model = entity::matchmaking::settings::ActiveModel {
+                let mut model = matchmaking_settings::ActiveModel {
                     guild_id: Set(settings.guild_id),
+                    last_updated: Set(Utc::now()),
                     ..Default::default()
                 };
 
@@ -131,7 +134,7 @@ impl InteractionHandler for MatchmakingSettingsHandler {
                     message = "Successfully disabled matchmaking channel.".to_string();
                 }
 
-                entity::matchmaking::Setting::update(model)
+                MatchmakingSettings::update(model)
                     .exec(self.utils.db_ref())
                     .await?;
 
@@ -151,8 +154,9 @@ impl InteractionHandler for MatchmakingSettingsHandler {
                     .get_guild_settings(data.command.guild_id.unwrap())
                     .await?;
 
-                let mut model = entity::matchmaking::settings::ActiveModel {
+                let mut model = matchmaking_settings::ActiveModel {
                     guild_id: Set(settings.guild_id),
+                    last_updated: Set(Utc::now()),
                     ..Default::default()
                 };
 
@@ -177,7 +181,7 @@ impl InteractionHandler for MatchmakingSettingsHandler {
                     message = "Successfully removed the admin role.".to_string();
                 }
 
-                entity::matchmaking::Setting::update(model)
+                MatchmakingSettings::update(model)
                     .exec(self.utils.db_ref())
                     .await?;
 
@@ -289,16 +293,16 @@ impl MatchmakingSettingsHandler {
             .guild_id
             .ok_or_else(|| anyhow!("You cannot use Runback in a DM."))?;
 
-        let setting = entity::matchmaking::Setting::find_by_id(guild_id.into())
+        let setting = MatchmakingSettings::find_by_id(guild_id.into())
             .one(self.utils.db_ref())
             .await?;
 
         let _setting = if setting.is_some() {
             let mut setting = unsafe { setting.unwrap_unchecked() }.into_active_model();
-            setting.channel_id = entity::sea_orm::Set(Some(channel_id.into()));
+            setting.channel_id = Set(Some(channel_id.into()));
             setting.update(self.utils.db_ref()).await?
         } else {
-            let setting = entity::matchmaking::settings::Model {
+            let setting = matchmaking_settings::Model {
                 guild_id: guild_id.into(),
                 last_updated: Utc::now(),
                 channel_id: Some(channel_id.into()),
@@ -339,9 +343,9 @@ impl MatchmakingSettingsHandler {
         &self,
         guild: Id<GuildMarker>,
         role: Id<RoleMarker>,
-    ) -> anyhow::Result<entity::matchmaking::settings::Model> {
+    ) -> anyhow::Result<matchmaking_settings::Model> {
         Ok(
-            entity::matchmaking::Setting::update(entity::matchmaking::settings::ActiveModel {
+            MatchmakingSettings::update(matchmaking_settings::ActiveModel {
                 guild_id: Set(guild.into()),
                 admin_role: Set(Some(role.into())),
                 ..Default::default()
@@ -354,7 +358,7 @@ impl MatchmakingSettingsHandler {
     fn is_authorized_admin(
         &self,
         member: &PartialMember,
-        role: Option<entity::IdWrapper<RoleMarker>>,
+        role: Option<bot::entity::IdWrapper<RoleMarker>>,
     ) -> bool {
         if let Some(perms) = member.permissions {
             if perms.contains(Permissions::ADMINISTRATOR) {

@@ -15,7 +15,6 @@ use crate::interactions::{
         ApplicationCommandData, ApplicationCommandUtilities, CommandGroupDescriptor,
         InteractionHandler, MessageComponentData,
     },
-    panels::admin_lobby::AdminLobbiesPanel,
 };
 
 pub struct MatchmakingPanelsHandler {

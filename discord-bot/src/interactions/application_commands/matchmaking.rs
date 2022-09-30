@@ -1,11 +1,11 @@
 use chrono::Utc;
 use dashmap::DashMap;
-use entity::sea_orm::prelude::{DateTimeUtc, Uuid};
+use sea_orm::prelude::*;
 use tokio::task::JoinHandle;
 use twilight_gateway::Event;
 use twilight_model::{
     application::{
-        command::{BaseCommandOptionData, ChoiceCommandOptionData, CommandOption, CommandType},
+        command::{BaseCommandOptionData, CommandOption, CommandType},
         component::{button::ButtonStyle, ActionRow, Button, Component},
     },
     channel::{
@@ -151,15 +151,16 @@ impl InteractionHandler for MatchmakingCommandHandler {
             .user
             .ok_or_else(|| anyhow!("could not get user data for caller"))?;
 
-        match data
+        let action = data
             .command
             .data
             .options
             .get(0)
             .ok_or_else(|| anyhow!("could not get subcommand option"))?
             .name
-            .as_str()
-        {
+            .to_owned();
+
+        match action.as_str() {
             "play-against" => {
                 let resolved = data
                     .command
@@ -295,12 +296,7 @@ impl InteractionHandler for MatchmakingCommandHandler {
 
                 Ok(())
             }
-            _ => {
-                return Err(anyhow!(
-                    "command handler for {} not found.",
-                    data.command.data.name.as_str()
-                ))
-            }
+            _ => return Err(anyhow!("command handler for \"{}\" not found.", action)),
         }
     }
 

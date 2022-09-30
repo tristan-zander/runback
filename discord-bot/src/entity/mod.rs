@@ -1,6 +1,3 @@
-#[macro_use]
-extern crate tracing;
-
 use std::{marker::PhantomData, num::NonZeroU64};
 
 use sea_orm::{
@@ -10,8 +7,18 @@ use sea_orm::{
 use serde::{Deserialize, Serialize};
 use twilight_model::id::Id;
 
-pub mod discord_user;
-pub mod matchmaking;
+pub mod prelude;
+
+pub mod game;
+pub mod game_character;
+pub mod matchmaking_invitation;
+pub mod matchmaking_lobbies;
+pub mod matchmaking_player_invitation;
+pub mod matchmaking_player_lobby;
+pub mod matchmaking_settings;
+pub mod sea_orm_active_enums;
+pub mod state;
+pub mod users;
 
 pub use sea_orm;
 
@@ -111,10 +118,12 @@ impl<T: std::fmt::Debug> TryGetable for IdWrapper<T> {
     ) -> Result<Self, sea_orm::TryGetError> {
         let val: Option<i64> = res.try_get(pre, col).map_err(sea_orm::TryGetError::DbErr)?;
         if val.is_none() {
-            return Err(sea_orm::TryGetError::Null);
+            return Err(sea_orm::TryGetError::Null("Value was null.".to_string()));
         }
         unsafe {
-            IdWrapper::from_database_i64(val.unwrap_unchecked()).ok_or(sea_orm::TryGetError::Null)
+            IdWrapper::from_database_i64(val.unwrap_unchecked()).ok_or(sea_orm::TryGetError::Null(
+                "Could not convert i64 into Nonzero u64".to_string(),
+            ))
         }
     }
 }

@@ -1,8 +1,7 @@
-use entity::{
-    sea_orm::{DatabaseConnection, Set},
-    IdWrapper,
-};
-use twilight_cache_inmemory::{InMemoryCache, UpdateCache};
+use bot::entity::{matchmaking_settings, prelude::*};
+use chrono::Utc;
+use sea_orm::{prelude::*, DatabaseConnection, Set};
+use twilight_cache_inmemory::InMemoryCache;
 use twilight_model::{
     http::interaction::InteractionResponse,
     id::{
@@ -17,7 +16,6 @@ use twilight_standby::Standby;
 
 use std::sync::Arc;
 
-use migration::sea_orm::EntityTrait;
 use twilight_model::application::interaction::ApplicationCommand as DiscordApplicationCommand;
 
 /// Contains any helper functions to help make writing application command handlers easier
@@ -97,10 +95,11 @@ impl ApplicationCommandUtilities {
     pub async fn get_guild_settings(
         &self,
         guild: Id<GuildMarker>,
-    ) -> anyhow::Result<entity::matchmaking::settings::Model> {
-        use entity::matchmaking::{settings, Setting};
+    ) -> anyhow::Result<matchmaking_settings::Model> {
+        use matchmaking_settings as settings;
+        use MatchmakingSettings as Setting;
 
-        let guild_id = IdWrapper::from(guild);
+        let guild_id: IdWrapper<_> = guild.into();
         let setting = Setting::find_by_id(guild_id.clone())
             .one(self.db_ref())
             .await?;
@@ -110,6 +109,7 @@ impl ApplicationCommandUtilities {
             None => {
                 let setting = settings::ActiveModel {
                     guild_id: Set(guild_id),
+                    last_updated: Set(Utc::now()),
                     ..Default::default()
                 };
 

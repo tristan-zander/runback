@@ -9,15 +9,16 @@ extern crate async_trait;
 #[macro_use]
 extern crate tokio;
 
+use bot::entity::sea_orm::{ConnectOptions, Database, DatabaseConnection};
+#[cfg(feature = "migrator")]
+use bot::migration::MigratorTrait;
 use config::Config;
-use entity::sea_orm::{ConnectOptions, Database, DatabaseConnection};
 use error::RunbackError;
 use futures::{
     future::select,
     stream::{FuturesUnordered, StreamExt},
 };
-use migration::MigratorTrait;
-use std::sync::Arc;
+use std::{process::exit, sync::Arc};
 use tokio::signal::unix::{signal, SignalKind};
 use twilight_cache_inmemory::{InMemoryCache, ResourceType};
 use twilight_gateway::{Cluster, Intents};
@@ -37,21 +38,42 @@ lazy_static! {
     static ref CONFIG: Arc<Box<Config>> = Arc::new(Box::new(Config::new().unwrap()));
 }
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt()
+fn main() {
+    let formatter = tracing_subscriber::fmt()
         .with_level(true)
         .with_target(true)
-        .with_max_level(Into::<tracing::Level>::into(CONFIG.as_ref().log_level))
-        //.json()
-        .try_init()
-        .map_err(|e| anyhow!(e))?;
+        .with_max_level(Into::<tracing::Level>::into(CONFIG.as_ref().log_level));
 
+    let res = if CONFIG.log_as_json == true {
+        formatter.json().try_init().map_err(|e| anyhow!(e))
+    } else {
+        formatter.try_init().map_err(|e| anyhow!(e))
+    };
+
+    if let Err(e) = res {
+        eprintln!("could not set up logger: {}", e);
+        exit(1);
+    }
+
+    let res = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(entrypoint());
+
+    if let Err(e) = res {
+        error!(error = ?e, "a fatal error has occurred");
+        exit(1);
+    }
+}
+
+async fn entrypoint() -> anyhow::Result<()> {
     let db = connect_to_database()
         .await
         .map_err(|e| anyhow!("Could not connect to database: {}", e))?;
     info!("Successfully connected to database.");
 
+    #[cfg(feature = "migrator")]
     migration::Migrator::up(db.as_ref(), None).await?;
 
     let cache = Arc::new(
@@ -102,70 +124,95 @@ async fn main() -> anyhow::Result<()> {
         pin!(s1, s2);
         let shutdown = select(s1, s2);
 
+        trace!("running main loop");
+
         select! {
-            ev = events.next() => {
-                if let Some((shard_id, event)) = ev {
-                    let cluster_ref = cluster.clone();
+            Some((shard_id, event)) = events.next() => {
+                let cluster_ref = cluster.clone();
 
-                    // Update the cache with the event.
-                    cache.update(&event);
-                    standby.process(&event);
+                // Update the cache with the event.
+                cache.update(&event);
+                standby.process(&event);
 
-                    trace!(ev = %format!("{:?}", event), "Received Discord event");
+                trace!(ev = %format!("{:?}", event), "Received Discord event");
 
-                    let _shard = match cluster_ref.shard(shard_id) {
-                        Some(s) => s,
-                        None => {
-                            error!(shard = %shard_id, "Invalid shard received during event");
-                            // Do some error handling here.
-                            continue;
-                        }
-                    };
-
-                    match event {
-                        Event::Ready(_) => {
-                            // Do some intital checks
-                            // Check to see if all of the panels related to this shard are healthy
-                            info!("Bot is ready!")
-                        }
-                        Event::InteractionCreate(i) => {
-                            let interaction_ref = interactions.clone();
-                            let shard = cluster_ref.shard(shard_id).unwrap();
-                            let res = interaction_ref.handle_interaction(i, shard);
-                            match res {
-                                Ok(fut) => {
-                                    executing_futures.push(fut);
-                                },
-                                Err(e) => {
-                                    error!(error = %e, "Error occurred while handling interactions.");
-                                    debug!(debug_error = %format!("{:?}", e), "Error occurred while handling interactions.");
-                                },
-                            }
-                        }
-                        Event::GatewayHeartbeatAck => {
-                            trace!("Gateway acked heartbeat");
-                        }
-                        _ => debug!(kind = %format!("{:?}", event.kind()), "Unhandled event"),
+                let _shard = match cluster_ref.shard(shard_id) {
+                    Some(s) => s,
+                    None => {
+                        error!(shard = %shard_id, "Invalid shard received during event");
+                        // Do some error handling here.
+                        continue;
                     }
-                } else {
-                    break;
+                };
+
+                match event {
+                    Event::Ready(_) => {
+                        // Do some intital checks
+                        // Check to see if all of the panels related to this shard are healthy
+                        info!("Bot is ready!")
+                    }
+                    Event::InteractionCreate(i) => {
+                        let interaction_ref = interactions.clone();
+                        let shard = cluster_ref.shard(shard_id).unwrap();
+                        let res = interaction_ref.handle_interaction(i, shard);
+                        match res {
+                            Ok(fut) => {
+                                executing_futures.push(fut);
+                            },
+                            Err(e) => {
+                                error!(error = %e, "error occurred while handling interactions.");
+                                debug!(debug_error = %format!("{:?}", e), "error occurred while handling interactions.");
+                            },
+                        }
+                    }
+                    Event::GatewayHeartbeatAck => {
+                        trace!("gateway acked heartbeat");
+                    }
+                    _ => debug!(kind = %format!("{:?}", event.kind()), "unhandled event"),
                 }
             }
-            result = executing_futures.next() => {
-                if let Some(res) = result {
-                    if let Err(e) = res {
-                        error!(error = ?e, "Application handler errored out");
-                    }
+            Some(result) = executing_futures.next() => {
+                if let Err(e) = result {
+                    error!(error = ?e, "Application handler errored out");
                 }
             }
             _ = shutdown => {
-                info!("Received shutdown signal");
+                info!("received shutdown signal");
                 break;
             }
         }
     }
 
     cluster.clone().down();
+
+    if let Some(guild) = CONFIG.debug_guild_id {
+        let client = twilight_http::Client::new(CONFIG.token.to_owned());
+
+        let application_id = client
+            .current_user_application()
+            .exec()
+            .await?
+            .model()
+            .await?
+            .id;
+
+        let guild_commands = client
+            .interaction(application_id)
+            .guild_commands(guild)
+            .exec()
+            .await?
+            .model()
+            .await?;
+
+        for c in guild_commands {
+            // Delete any guild-specific commands
+            client
+                .interaction(application_id)
+                .delete_guild_command(guild, c.id.ok_or_else(|| anyhow!("command has no id"))?)
+                .exec()
+                .await?;
+        }
+    }
 
     return Ok(());
 }
@@ -180,9 +227,12 @@ async fn connect_to_database() -> Result<Arc<Box<DatabaseConnection>>, RunbackEr
     };
 
     let connection_string = format!(
-        "{}://{}{}@{}/{}{}",
-        db.protocol, db.username, pass, db.host, db.db_name, db.extra_options
+        "{}://{}{}@{}:{}/{}{}",
+        db.protocol, db.username, pass, db.host, db.port, db.db_name, db.extra_options
     );
+
+    info!(host = ?db.host, "Connecting to database");
+    debug!(connection_string = ?connection_string);
 
     let opt = ConnectOptions::new(connection_string);
 

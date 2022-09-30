@@ -1,6 +1,9 @@
 pub mod admin;
 pub mod eula;
-pub mod lfg;
+// pub mod lfg;
+
+#[deprecated(note = "Revisiting this later")]
+pub mod lfg {}
 pub mod matchmaking;
 pub mod utils;
 
@@ -8,7 +11,7 @@ pub use utils::ApplicationCommandUtilities;
 
 use std::sync::Arc;
 
-use entity::sea_orm::prelude::Uuid;
+use sea_orm::prelude::*;
 use twilight_model::{
     application::{
         command::{Command, CommandType},
