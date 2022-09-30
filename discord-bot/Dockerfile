@@ -8,6 +8,8 @@ WORKDIR /var/src/discord-bot
 RUN cargo install --root /var/app --bin discord-bot --path .
 
 FROM alpine:3.16
+# Why is gcc necessary? Is it for the migration?
+RUN apk add --no-cache openssl gcc
 COPY --from=install /var/app/bin /var/app
 RUN chmod +x /var/app/discord-bot
 ENTRYPOINT [ "/var/app/discord-bot" ]
