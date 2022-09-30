@@ -16,7 +16,7 @@ use super::{
 };
 
 // Consider getting this path from an environment variable
-const EULA: &'static str = include_str!("../../../../EULA.md");
+const EULA: &'static str = include_str!("../../../../../EULA.md");
 
 pub struct EulaCommandHandler {
     pub utils: Arc<ApplicationCommandUtilities>,
