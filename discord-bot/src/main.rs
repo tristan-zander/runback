@@ -12,14 +12,14 @@ extern crate async_trait;
 extern crate tokio;
 
 use bot::entity::sea_orm::{ConnectOptions, Database, DatabaseConnection};
-#[cfg(feature = "migrator")]
-use sea_orm_migration::prelude::*;
 use config::Config;
 use error::RunbackError;
 use futures::{
     future::select,
     stream::{FuturesUnordered, StreamExt},
 };
+#[cfg(feature = "migrator")]
+use sea_orm_migration::prelude::*;
 use std::{process::exit, sync::Arc};
 use tokio::signal::unix::{signal, SignalKind};
 use twilight_cache_inmemory::{InMemoryCache, ResourceType};
