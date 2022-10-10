@@ -57,6 +57,9 @@ jobs:
       - run:
           name: Install Build Dependencies
           command: apk add --no-cache bash rustup openssl openssl-dev pkgconfig librdkafka cmake make gcc g++ git openssh curl
+      - restore_cache:
+          keys:
+            - test-tools
       - run:
           name: Install Rust
           shell: /bin/bash
@@ -74,6 +77,10 @@ jobs:
             chmod +x codecov
             mv codecov /usr/bin/codecov
             cargo install cargo-tarpaulin --version ^0.22
+      - save_cache:
+          key: test-tools
+          paths:
+            - /root/.cargo/bin
       - restore_cache:
           keys:
             - 'cargo-{{ checksum "Cargo.lock" }}'
@@ -93,15 +100,15 @@ jobs:
           name: Run tests
           shell: /bin/bash
           command: |
-            cargo tarpaulin -p discord-bot --release --all-features -l --locked
+            cargo tarpaulin -p discord-bot --release --all-features -l --locked --out Xml
+      - run:
+          name: Run Codecov
+          shell: /bin/bash
+          command: codecov
       - save_cache:
           key: 'cargo-{{ checksum "Cargo.lock" }}'
           paths:
             - ~/.cargo
-      - run: 
-          name: Run Codecov
-          shell: /bin/bash
-          command: codecov
 
   release-discord-bot:
     executor: common
@@ -119,7 +126,7 @@ jobs:
       - setup_remote_docker
 
       - checkout
-      
+
       - restore_cache:
           keys:
             - semantic-release-rust
