@@ -97,11 +97,14 @@ jobs:
           command: |
             npm install
             cargo install semantic-release-rust --version 1.0.0-alpha.8
+            cargo install cargo-workspaces --version ^0.2
             export PATH=$PATH:~/.cargo/bin
       - save_cache:
           paths:
             - "/root/.cargo/"
           key: semantic-release-rust
+
+      - run: cd discord-bot/
 
       - run:
           name: Run semantic-release
