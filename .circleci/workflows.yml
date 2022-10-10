@@ -67,16 +67,20 @@ jobs:
       - run:
           name: Check formatting
           command: |
+            source ~/.cargo/env
             rustup component add rustfmt
             cargo fmt -p discord-bot --check
       - run:
           name: Run Clippy
           command: |
+            source ~/.cargo/env
             rustup component add clippy
             cargo clippy --release -p discord-bot
       - run:
           name: Run tests
-          command: cargo test --release -p discord-bot
+          command: |
+            source ~/.cargo/env
+            cargo test --release -p discord-bot
       - save_cache:
           key: 'cargo-{{ checksum "Cargo.lock" }}'
           paths:
