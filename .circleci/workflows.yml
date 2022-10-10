@@ -62,7 +62,7 @@ jobs:
             - test-tools
       - run:
           name: Install Rust
-          shell: /bin/bash
+          shell: /bin/bash -eo pipefail
           command: |
             rustup-init -y
             source ~/.cargo/env
@@ -71,7 +71,7 @@ jobs:
       - checkout
       - run:
           name: Install Test Coverage
-          shell: /bin/bash
+          shell: /bin/bash -eo pipefail
           command: |
             curl -Os https://uploader.codecov.io/latest/alpine/codecov
             chmod +x codecov
@@ -80,30 +80,30 @@ jobs:
       - save_cache:
           key: test-tools
           paths:
-            - /root/.cargo/bin
+            - /root/.cargo
       - restore_cache:
           keys:
             - 'cargo-{{ checksum "Cargo.lock" }}'
       - run:
           name: Check formatting
-          shell: /bin/bash
+          shell: /bin/bash -eo pipefail
           command: |
             rustup component add rustfmt
             cargo fmt -p discord-bot --check
       - run:
           name: Run Clippy
-          shell: /bin/bash
+          shell: /bin/bash -eo pipefail
           command: |
             rustup component add clippy
             cargo clippy --release -p discord-bot
       - run:
           name: Run tests
-          shell: /bin/bash
+          shell: /bin/bash -eo pipefail
           command: |
-            cargo tarpaulin -p discord-bot --release --all-features -l --locked --out Xml
+            cargo tarpaulin -p discord-bot --release --all-features -l --locked --out Xml --ciserver circle-ci --engine Llvm
       - run:
           name: Run Codecov
-          shell: /bin/bash
+          shell: /bin/bash -eo pipefail
           command: codecov
       - save_cache:
           key: 'cargo-{{ checksum "Cargo.lock" }}'

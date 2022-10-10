@@ -13,7 +13,7 @@ extern crate tokio;
 
 use bot::entity::sea_orm::{ConnectOptions, Database, DatabaseConnection};
 #[cfg(feature = "migrator")]
-use bot::migration::MigratorTrait;
+use sea_orm_migration::prelude::*;
 use config::Config;
 use error::RunbackError;
 use futures::{
@@ -76,7 +76,7 @@ async fn entrypoint() -> anyhow::Result<()> {
     info!("Successfully connected to database.");
 
     #[cfg(feature = "migrator")]
-    migration::Migrator::up(db.as_ref(), None).await?;
+    bot::migration::Migrator::up(db.as_ref(), None).await?;
 
     let cache = Arc::new(
         InMemoryCache::builder()

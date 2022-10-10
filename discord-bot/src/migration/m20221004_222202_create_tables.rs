@@ -1,4 +1,4 @@
-use entity::{
+use crate::entity::{
     prelude::*,
     sea_orm::{sea_query::extension::postgres::Type, ConnectionTrait, Statement},
     sea_orm_active_enums::LobbyPrivacy,
