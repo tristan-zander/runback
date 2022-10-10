@@ -26,14 +26,20 @@ executors:
     working_directory: /tmp
 
 workflows:
-  test-discord-bot:
+  build-discord-bot:
     jobs:
-      - test-discord-bot
+      - rust/lint-test-build:
+          package: discord-bot
+          release: true
+      - test-discord-bot:
+          requires:
+            - rust/lint-test-build
     when:
       or:
         - << pipeline.parameters.modified-root-manifest >>
         - << pipeline.parameters.modified-common >>
         - << pipeline.parameters.modified-discord-bot >>
+
   publish-discord-bot:
     when:
       or:
@@ -41,9 +47,13 @@ workflows:
         - << pipeline.parameters.modified-common >>
         - << pipeline.parameters.modified-discord-bot >>
     jobs:
+      - rust/lint-test-build:
+          package: discord-bot
+          release: true
       - release-discord-bot:
           requires:
             - test-discord-bot
+            - rust/lint-test-build
           filters:
             branches:
               only: main
@@ -57,9 +67,6 @@ jobs:
           name: Install Build Dependencies
           command: apk add --no-cache openssl openssl-dev pkgconfig librdkafka cmake make gcc g++ git openssh
       - checkout
-      - rust/lint-test-build:
-          package: discord-bot
-          release: true
 
   release-discord-bot:
     executor: common
@@ -91,7 +98,7 @@ jobs:
           command: |
             npm install
             cargo install semantic-release-rust --version 1.0.0-alpha.8
-            export PATH=$PATH:~/.cargo/bin 
+            export PATH=$PATH:~/.cargo/bin
       - save_cache:
           paths:
             - "/root/.cargo/"
