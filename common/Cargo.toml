@@ -10,7 +10,7 @@ orm = ["sea-orm"]
 # TODO: Make features for common utilities
 
 [dependencies]
-sea-orm = { version = "^0", features = [
+sea-orm = { version = "^0.9", features = [
     "sqlx-postgres",
     "runtime-tokio-rustls",
     "macros",
