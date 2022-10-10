@@ -63,10 +63,10 @@ jobs:
             cargo fmt -p discord-bot --check
       - run:
           name: Run Clippy
-          run: cargo clippy --release -p discord-bot
+          command: cargo clippy --release -p discord-bot
       - run:
           name: Run tests
-          run: cargo test --release -p discord-bot
+          command: cargo test --release -p discord-bot
       - save_cache:
           key: 'cargo-{{ checksum "Cargo.lock" }}'
           paths:
