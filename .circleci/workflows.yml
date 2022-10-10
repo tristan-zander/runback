@@ -28,12 +28,7 @@ executors:
 workflows:
   build-discord-bot:
     jobs:
-      - rust/lint-test-build:
-          package: discord-bot
-          release: true
-      - test-discord-bot:
-          requires:
-            - rust/lint-test-build
+      - test-discord-bot
     when:
       or:
         - << pipeline.parameters.modified-root-manifest >>
@@ -47,13 +42,10 @@ workflows:
         - << pipeline.parameters.modified-common >>
         - << pipeline.parameters.modified-discord-bot >>
     jobs:
-      - rust/lint-test-build:
-          package: discord-bot
-          release: true
       - release-discord-bot:
           requires:
+            - doctl/install_and_initialize_cli
             - test-discord-bot
-            - rust/lint-test-build
           filters:
             branches:
               only: main
@@ -66,7 +58,11 @@ jobs:
       - run:
           name: Install Build Dependencies
           command: apk add --no-cache openssl openssl-dev pkgconfig librdkafka cmake make gcc g++ git openssh
+      - rust/install
       - checkout
+      - rust/clippy
+      - rust/test:
+          package: discord-bot
 
   release-discord-bot:
     executor: common
@@ -81,11 +77,11 @@ jobs:
           name: Install Build Dependencies
           command: apk add --no-cache openssl openssl-dev pkgconfig librdkafka cmake make gcc g++ openssh
 
+      - rust/install
+
       - setup_remote_docker
 
       - checkout
-
-      - doctl/install_and_initialize_cli
 
       # Temp debugging
       - run: ls -alh
