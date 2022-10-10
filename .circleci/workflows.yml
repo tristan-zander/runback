@@ -16,6 +16,9 @@ parameters:
   modified-matchmaking-service:
     type: boolean
     default: false
+  rerun-all:
+    type: boolean
+    default: false
 
 executors:
   # TODO: make a common Dockerfile in the common package
@@ -31,6 +34,7 @@ workflows:
         - << pipeline.parameters.modified-root-manifest >>
         - << pipeline.parameters.modified-common >>
         - << pipeline.parameters.modified-discord-bot >>
+        - << pipeline.parameters.rerun-all >>
     jobs:
       - test-discord-bot
       - doctl/install_and_initialize_cli:

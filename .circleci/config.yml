@@ -8,6 +8,7 @@ workflows:
       - path-filtering/filter:
           base-revision: main
           mapping: |
+            .circleci/.* rerun-all true
             Config.(toml|lock) modified-root-manifest true
             common/.* modified-common true
             discord-bot/.* modified-discord-bot true
