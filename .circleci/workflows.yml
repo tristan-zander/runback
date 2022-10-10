@@ -57,7 +57,7 @@ jobs:
           name: Install Rust
           command: |
             rustup-init -y
-            echo "source ~/.cargo/env" >> $BASH_ENV
+            echo "source ~/.cargo/env" >> $CIRCLE_SHELL_ENV
             export PATH=$PATH:/root/.cargo/bin
       - checkout
       - restore_cache:
