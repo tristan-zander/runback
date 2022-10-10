@@ -1,0 +1,11 @@
+[default]
+token = "OTM3OTExNjYxOTQyMTY5NjQw.GmMAqJ.Pl9ixytNqmy7hIICz0NliWxcNXxcj9cx44jovI"
+log_level = "DEBUG"
+debug_guild_id = "842104236812402739"
+
+[default.db]
+protocol = "postgres"
+username = "runback"
+password = "password"
+host = "db"
+db_name = "discord-bot"

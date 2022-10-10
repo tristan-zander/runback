@@ -1,0 +1,2 @@
+[workspace]
+members = ["discord-bot", "matchmaking-service", "common"]

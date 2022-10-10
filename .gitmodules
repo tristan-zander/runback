@@ -1,8 +1,0 @@
-[submodule "common"]
-	path = common
-	url = git@github.com:tristan-zander/runback-common.git
-	branch = main
-[submodule "discord-bot"]
-	path = discord-bot
-	url = git@github.com:tristan-zander/runback-discord-bot.git
-	branch = main
