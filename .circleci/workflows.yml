@@ -102,6 +102,8 @@ jobs:
       - setup_remote_docker
 
       - checkout
+      
+      - run: cd discord-bot/
 
       - restore_cache:
           keys:
@@ -117,8 +119,6 @@ jobs:
           paths:
             - "/root/.cargo/"
           key: semantic-release-rust
-
-      - run: cd discord-bot/
 
       - run:
           name: Run semantic-release
