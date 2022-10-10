@@ -65,11 +65,11 @@ impl MigrationTrait for Migration {
                     )
                     .col(
                         ColumnDef::new(matchmaking_settings::Column::HasAcceptedEula)
-                        .timestamp_with_time_zone()
+                            .timestamp_with_time_zone(),
                     )
                     .col(
                         ColumnDef::new(matchmaking_settings::Column::LastUpdated)
-                        .timestamp_with_time_zone()
+                            .timestamp_with_time_zone()
                             .not_null(),
                     )
                     .col(ColumnDef::new(matchmaking_settings::Column::ChannelId).big_integer())
