@@ -59,7 +59,7 @@ jobs:
           command: apk add --no-cache bash rustup openssl openssl-dev pkgconfig librdkafka cmake make gcc g++ git openssh curl
       - restore_cache:
           keys:
-            - test-tools
+            - test-tools-v1
       - run:
           name: Install Rust
           shell: /bin/bash -eo pipefail
@@ -78,7 +78,7 @@ jobs:
             mv codecov /usr/bin/codecov
             cargo install cargo-tarpaulin --version ^0.22
       - save_cache:
-          key: test-tools
+          key: test-tools-v1
           paths:
             - /root/.cargo
       - restore_cache:
