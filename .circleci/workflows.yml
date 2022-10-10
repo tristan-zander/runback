@@ -57,8 +57,8 @@ jobs:
           name: Install Rust
           command: |
             rustup-init -y
-            trustup toolchain install $RUST_VERSION
             source ~/.cargo/env
+            rustup toolchain install $RUST_VERSION
             echo 'source $HOME/.cargo/env' >> $BASH_ENV
       - checkout
       - restore_cache:
