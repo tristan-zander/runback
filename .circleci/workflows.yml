@@ -52,7 +52,13 @@ jobs:
     steps:
       - run:
           name: Install Build Dependencies
-          command: apk add --no-cache 'cargo>1.57' rustup openssl openssl-dev pkgconfig librdkafka cmake make gcc g++ git openssh curl
+          command: apk add --no-cache rustup openssl openssl-dev pkgconfig librdkafka cmake make gcc g++ git openssh curl
+      - run:
+          name: Install Rust
+          command: |
+            rustup-init -y
+            source $HOME/.cargo/env
+            export PATH=$PATH;$HOME/.cargo/bin
       - checkout
       - restore_cache:
           keys:
@@ -60,12 +66,12 @@ jobs:
       - run:
           name: Check formatting
           command: |
-            rustup-init component add rustfmt
+            rustup component add rustfmt
             cargo fmt -p discord-bot --check
       - run:
           name: Run Clippy
           command: |
-            rustup-init component add clippy
+            rustup component add clippy
             cargo clippy --release -p discord-bot
       - run:
           name: Run tests
