@@ -37,6 +37,7 @@ workflows:
         - << pipeline.parameters.rerun-all >>
     jobs:
       - test-discord-bot
+      - coverage-discord-bot
       - doctl/install_and_initialize_cli:
           filters:
             branches:
@@ -44,19 +45,31 @@ workflows:
       - release-discord-bot:
           requires:
             - doctl/install_and_initialize_cli
-            - test-discord-bot
           filters:
             branches:
               only: main
 
 jobs:
+  coverage-discord-bot:
+    machine: true
+    steps:
+      - checkout
+      - run:
+          name: Coverage with docker
+          command: docker run --security-opt seccomp=unconfined -v "${PWD}:/volume" xd009642/tarpaulin -c "cargo tarpaulin -p discord-bot --release --all-features -l --locked --out Xml --ciserver circle-ci --engine Llvm"
+      - run:
+          name: Install Test Coverage
+          command: |
+            curl -Os https://uploader.codecov.io/latest/alpine/codecov
+            chmod +x codecov
+            ./codecov
   test-discord-bot:
     executor: common
     resource_class: large
     steps:
       - run:
           name: Install Build Dependencies
-          command: apk add --no-cache bash rustup openssl openssl-dev pkgconfig librdkafka cmake make gcc g++ git openssh curl
+          command: apk add --no-cache bash rustup openssl openssl-dev pkgconfig librdkafka cmake make gcc g++ git openssh curl docker
       - restore_cache:
           keys:
             - test-tools-v1
@@ -69,15 +82,6 @@ jobs:
             rustup toolchain install stable
             echo 'source $HOME/.cargo/env' >> $BASH_ENV
       - checkout
-      - run:
-          name: Install Test Coverage
-          shell: /bin/bash -eo pipefail
-          command: |
-            curl -Os https://uploader.codecov.io/latest/alpine/codecov
-            chmod +x codecov
-            mv codecov /usr/bin/codecov
-            cargo install cargo-binstall
-            cargo binstall cargo-tarpaulin --version ^0.22
       - save_cache:
           key: test-tools-v1
           paths:
@@ -100,12 +104,7 @@ jobs:
       - run:
           name: Run tests
           shell: /bin/bash -eo pipefail
-          command: |
-            cargo tarpaulin -p discord-bot --release --all-features -l --locked --out Xml --ciserver circle-ci --engine Llvm
-      - run:
-          name: Run Codecov
-          shell: /bin/bash -eo pipefail
-          command: codecov
+          command: cargo test --release -p discord-bot
       - save_cache:
           key: 'cargo-{{ checksum "Cargo.lock" }}'
           paths:
@@ -113,7 +112,7 @@ jobs:
 
   release-discord-bot:
     executor: common
-    resource_class: small
+    resource_class: large
     steps:
       - run:
           name: Install Script Dependencies
