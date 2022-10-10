@@ -56,7 +56,7 @@ jobs:
     steps:
       - run:
           name: Install Build Dependencies
-          command: apk add --no-cache rustup openssl openssl-dev pkgconfig librdkafka cmake make gcc g++ git openssh curl
+          command: apk add --no-cache bash rustup openssl openssl-dev pkgconfig librdkafka cmake make gcc g++ git openssh curl
       - run:
           name: Install Rust
           command: |
@@ -101,14 +101,12 @@ jobs:
 
       - run:
           name: Install Build Dependencies
-          command: apk add --no-cache openssl openssl-dev pkgconfig librdkafka cmake make gcc g++ openssh 'cargo>1.57'
+          command: apk add --no-cache bash openssl openssl-dev pkgconfig librdkafka cmake make gcc g++ openssh 'cargo>1.57'
 
       - setup_remote_docker
 
       - checkout
       
-      - run: cd discord-bot/
-
       - restore_cache:
           keys:
             - semantic-release-rust
@@ -119,6 +117,7 @@ jobs:
             cargo install semantic-release-rust --version 1.0.0-alpha.8
             cargo install cargo-workspaces --version ^0.2
             export PATH=$PATH:~/.cargo/bin
+          working_directory: /tmp/app/discord-bot
       - save_cache:
           paths:
             - "/root/.cargo/"
@@ -127,3 +126,4 @@ jobs:
       - run:
           name: Run semantic-release
           command: npx semantic-release
+          working_directory: /tmp/app/discord-bot
