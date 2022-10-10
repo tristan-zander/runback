@@ -53,17 +53,23 @@ jobs:
     steps:
       - run:
           name: Install Build Dependencies
-          command: apk add --no-cache 'cargo>1.57' rustup openssl openssl-dev pkgconfig librdkafka cmake make gcc g++ git openssh curl
-      - run: mv /usr/bin/rustup-init /usr/bin/rustup
+          command: apk add --no-cache 'cargo>1.57' openssl openssl-dev pkgconfig librdkafka cmake make gcc g++ git openssh curl
       - checkout
-      - rust/install
-      - rust/format:
-          working_directory: /tmp/app
-      - rust/clippy:
-          working_directory: /tmp/app
+      - restore_cache:
+          keys:
+            - 'cargo-{{ checksum "Cargo.lock" }}'
+      - run:
+          name: Check formatting
+          command: |
+            cargo fmt -p discord-bot --check
+      - run:
+          name: Run Clippy
+          run: cargo clippy
       - rust/test:
-          package: discord-bot
-          working_directory: /tmp/app
+      - save_cache:
+          key: 'cargo-{{ checksum "Cargo.lock" }}'
+          paths:
+            - ~/.cargo
 
   release-discord-bot:
     executor: common
