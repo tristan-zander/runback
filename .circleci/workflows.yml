@@ -1,0 +1,99 @@
+version: 2.1
+
+orbs:
+  cli: digitalocean/cli@0.1.1
+  rust: circleci/rust@1.6.0
+
+
+parameters:
+  modified-root-manifest:
+    type: boolean
+    default: false
+  modified-common:
+    type: boolean
+    default: false
+  modified-discord-bot:
+    type: boolean
+    default: false
+  modified-matchmaking-service:
+    type: boolean
+    default: false
+
+workflows:
+  test-discord-bot:
+    jobs:
+      - build-discord-bot
+      - test-discord-bot:
+          requires:
+            - build-discord-bot
+          filters:
+            branches:
+              ignore: main
+  publish-discord-bot:
+    when:
+      or:
+        - << pipeline.parameters.modified-root-manifest >>
+        - << pipeline.parameters.modified-common >>
+        - << pipeline.parameters.modified-discord-bot >>
+    jobs:
+      - build-release:
+          filters:
+            branches:
+              only: main
+
+jobs:
+  test-discord-bot:
+    # Specify the execution environment. You can specify an image from Dockerhub or use one of our Convenience Images from CircleCI's Developer Hub.
+    # See: https://circleci.com/docs/2.0/configuration-reference/#docker-machine-macos-windows-executor
+    docker:
+      # TODO: use Dockerfile within this repo
+      - image: alpine:latest
+    resource_class: medium
+    # Add steps to the job
+    # See: https://circleci.com/docs/2.0/configuration-reference/#steps
+    steps:
+      - run:
+          name: Install Build Dependencies
+          command: apk add --no-cache openssl openssl-dev pkgconfig librdkafka cmake make gcc g++ git openssh
+      - checkout
+      - rust/format:
+          package: discord-bot
+      - rust/test:
+          package: discord-bot
+
+  release-discord-bot:
+    docker:
+      - image: docker:latest
+    resource_class: large
+    steps:
+      - run:
+          name: Install Script Dependencies
+          command: |
+            apk add --no-cache sudo 'cargo>1.57' docker npm git
+
+      - run:
+          name: Install Build Dependencies
+          command: apk add --no-cache openssl openssl-dev pkgconfig librdkafka cmake make gcc g++ openssh
+
+      - setup_remote_docker
+
+      - checkout
+
+      - doctl/install_and_initialize_cli
+
+      - restore_cache:
+          keys:
+            - semantic-release-rust
+      - run:
+          name: Setup semantic release
+          command: |
+            npm install
+            cargo install semantic-release-rust --version 1.0.0-alpha.8
+      - save_cache:
+          paths:
+            - "/root/.cargo/"
+          key: semantic-release-rust
+
+      - run:
+          name: Run semantic-release
+          command: PATH=$PATH:~/.cargo/bin npx semantic-release
