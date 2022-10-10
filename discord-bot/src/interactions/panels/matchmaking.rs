@@ -78,7 +78,7 @@ pub mod report_score {
 
             let mut user_scores = Vec::with_capacity(embed.fields.len() - 1);
             for f in &embed.fields {
-                if f.inline == false {
+                if !f.inline {
                     continue;
                 }
 
@@ -106,7 +106,7 @@ pub mod report_score {
                 };
 
                 user_scores.push(ScoreData {
-                    user: f.name.to_owned(),
+                    user: f.name.clone(),
                     score,
                 });
             }
@@ -114,7 +114,7 @@ pub mod report_score {
             let mode = embed
                 .fields
                 .iter()
-                .filter(|f| f.inline == false)
+                .filter(|f| !f.inline)
                 .nth(1)
                 .ok_or_else(|| anyhow!("could not get field for current mode"))?
                 .value

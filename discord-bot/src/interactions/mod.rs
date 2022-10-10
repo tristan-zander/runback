@@ -25,7 +25,7 @@ use crate::interactions::application_commands::{
 };
 
 use self::application_commands::{
-    admin::admin_handler::AdminCommandHandler, eula::EulaCommandHandler,
+    admin::admin_handler::AdminCommandHandler,
     matchmaking::MatchmakingCommandHandler, CommandGroupDescriptor, InteractionHandler,
     PingCommandHandler,
 };
@@ -93,8 +93,8 @@ impl InteractionProcessor {
                 .flat_map(|grp| {
                     grp.1
                         .commands
-                        .into_iter()
-                        .map(|c| c.to_owned())
+                        .iter()
+                        .map(std::clone::Clone::clone)
                         .collect::<Vec<Command>>()
                 })
                 .collect::<Vec<_>>();
@@ -167,7 +167,7 @@ impl InteractionProcessor {
             .await?;
 
         for c in global_commands {
-            if let Some(_) = self.commands.iter().find(|new_c| c.id == new_c.id) {
+            if self.commands.iter().any(|new_c| c.id == new_c.id) {
                 debug!(name = ?c.name, id = ?c.id, "found matching command");
             } else {
                 // Remove the command from Discord. We're no longer going to support it
@@ -203,7 +203,7 @@ impl InteractionProcessor {
                 debug!(id = ?&command.data.id, "received application command");
                 if let Some(handler) = self.application_command_handlers.get(&command.data.id) {
                     let data = Box::new(ApplicationCommandData {
-                        command: *command.to_owned(),
+                        command: *command.clone(),
                         id: Uuid::new_v4(),
                     });
                     let fut = Box::pin(
@@ -224,7 +224,7 @@ impl InteractionProcessor {
                 if let Some((handler_name, leftover)) = message.data.custom_id.split_once(':') {
                     if let Some(handler) = self.component_handlers.get(handler_name) {
                         let data = Box::new(MessageComponentData {
-                            id:Uuid::new_v4(), message: *message.to_owned(), action: leftover.to_string() }
+                            id:Uuid::new_v4(), message: *message.clone(), action: leftover.to_string() }
                         );
                         let handler = handler.clone();
                         let fut = Box::pin(async move { handler.process_component(data).await });
@@ -245,7 +245,7 @@ impl InteractionProcessor {
         }
 
         trace!("Ended interaction response.");
-        return Err(anyhow!("Interaction was unmatched"));
+        Err(anyhow!("Interaction was unmatched"))
     }
 
     async fn execute_application_command(
@@ -269,7 +269,7 @@ impl InteractionProcessor {
 
         let name = data.command.data.name.clone();
         let token = data.command.token.clone();
-        let runback_id = data.id.clone();
+        let runback_id = data.id;
         let timeout = timeout(
             Duration::from_secs(5),
             handler
@@ -300,7 +300,7 @@ impl InteractionProcessor {
                         .await?;
                 }
 
-                return Ok(());
+                Ok(())
             }
             Err(_) => {
                 utils
@@ -310,7 +310,7 @@ impl InteractionProcessor {
                     .content(Some("Command timed out."))?
                     .exec()
                     .await?;
-                return Err(anyhow!("Command timed out: {}", name));
+                Err(anyhow!("Command timed out: {}", name))
             }
         }
         // handler.process_command(data).await

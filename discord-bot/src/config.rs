@@ -56,7 +56,7 @@ impl Default for Config {
 
 impl Config {
     pub fn new() -> Result<Config, figment::Error> {
-        Ok(Self::figment().extract()?)
+        Self::figment().extract()
     }
 
     pub fn figment() -> Figment {

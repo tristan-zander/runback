@@ -2,7 +2,6 @@ version: 2.1
 
 orbs:
   doctl: digitalocean/cli@0.1.1
-  rust: circleci/rust@1.6.0
 
 parameters:
   modified-root-manifest:
@@ -64,8 +63,10 @@ jobs:
             cargo fmt -p discord-bot --check
       - run:
           name: Run Clippy
-          run: cargo clippy
-      - rust/test:
+          run: cargo clippy --release -p discord-bot
+      - run:
+          name: Run tests
+          run: cargo test --release -p discord-bot
       - save_cache:
           key: 'cargo-{{ checksum "Cargo.lock" }}'
           paths:
@@ -87,8 +88,6 @@ jobs:
       - setup_remote_docker
 
       - checkout
-
-      - rust/install
 
       - restore_cache:
           keys:

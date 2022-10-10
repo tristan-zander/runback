@@ -18,7 +18,7 @@ use super::{
 };
 
 // TODO: Make a distinct EULA for the bot itself
-const EULA: &'static str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../", "EULA.md"));
+const EULA: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../", "EULA.md"));
 
 pub struct EulaCommandHandler {
     pub utils: Arc<ApplicationCommandUtilities>,
@@ -74,7 +74,7 @@ impl InteractionHandler for EulaCommandHandler {
         };
 
         let options = &command.data.options;
-        if options.len() > 0 && options[0].name.as_str() == "accept" {
+        if !options.is_empty() && options[0].name.as_str() == "accept" {
             match &options[0].value {
                 CommandOptionValue::String(accepted) => {
                     if accepted.as_str() != "accept" {

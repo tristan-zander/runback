@@ -58,7 +58,7 @@ impl From<Box<dyn Error>> for RunbackError {
     fn from(e: Box<dyn Error>) -> Self {
         RunbackError {
             message: format!("Unknown error: {}", e),
-            inner: Some(e.into()),
+            inner: Some(e),
         }
     }
 }

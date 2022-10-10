@@ -1,3 +1,5 @@
+#![warn(clippy::pedantic)]
+
 #[macro_use]
 extern crate tracing;
 #[macro_use]
@@ -44,7 +46,7 @@ fn main() {
         .with_target(true)
         .with_max_level(Into::<tracing::Level>::into(CONFIG.as_ref().log_level));
 
-    let res = if CONFIG.log_as_json == true {
+    let res = if CONFIG.log_as_json {
         formatter.json().try_init().map_err(|e| anyhow!(e))
     } else {
         formatter.try_init().map_err(|e| anyhow!(e))
@@ -186,7 +188,7 @@ async fn entrypoint() -> anyhow::Result<()> {
     cluster.clone().down();
 
     if let Some(guild) = CONFIG.debug_guild_id {
-        let client = twilight_http::Client::new(CONFIG.token.to_owned());
+        let client = twilight_http::Client::new(CONFIG.token.clone());
 
         let application_id = client
             .current_user_application()
@@ -214,7 +216,7 @@ async fn entrypoint() -> anyhow::Result<()> {
         }
     }
 
-    return Ok(());
+    Ok(())
 }
 
 #[tracing::instrument]

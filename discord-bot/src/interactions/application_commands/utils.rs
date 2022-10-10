@@ -36,7 +36,7 @@ impl ApplicationCommandUtilities {
         standby: Arc<Standby>,
     ) -> anyhow::Result<Self> {
         let http_client = ClientBuilder::new()
-            .token(crate::CONFIG.token.to_owned())
+            .token(crate::CONFIG.token.clone())
             .build();
 
         let application_id = {
@@ -61,7 +61,7 @@ impl ApplicationCommandUtilities {
         Self {
             db,
             http_client: ClientBuilder::new()
-                .token(crate::CONFIG.token.to_owned())
+                .token(crate::CONFIG.token.clone())
                 .build(),
             application_id,
             cache,

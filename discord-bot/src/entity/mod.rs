@@ -33,7 +33,7 @@ pub struct IdWrapper<T> {
 impl<T> Clone for IdWrapper<T> {
     fn clone(&self) -> Self {
         Self {
-            inner: self.inner.clone(),
+            inner: self.inner,
             data: PhantomData {},
         }
     }
@@ -52,12 +52,12 @@ impl<T> PartialEq for IdWrapper<T> {
 }
 
 impl<T> IdWrapper<T> {
-    /// Translate the IdWrapper into a proper Id.
-    pub fn into_id(&self) -> Id<T> {
+    /// Translate the `IdWrapper` into a proper Id.
+    #[must_use] pub fn into_id(&self) -> Id<T> {
         Id::from(self.inner)
     }
 
-    pub fn new(n: u64) -> Option<Self> {
+    #[must_use] pub fn new(n: u64) -> Option<Self> {
         if n == 0 {
             return None;
         }
@@ -65,7 +65,7 @@ impl<T> IdWrapper<T> {
     }
 
     /// Create an Id without checking that it could equal 0
-    pub unsafe fn new_unchecked(n: u64) -> Self {
+    #[must_use] pub unsafe fn new_unchecked(n: u64) -> Self {
         IdWrapper {
             inner: NonZeroU64::new_unchecked(n),
             data: PhantomData {},
@@ -146,7 +146,7 @@ impl<T> ValueType for IdWrapper<T> {
             }
         }
 
-        return Err(sea_orm::sea_query::ValueTypeErr);
+        Err(sea_orm::sea_query::ValueTypeErr)
     }
 
     fn type_name() -> String {

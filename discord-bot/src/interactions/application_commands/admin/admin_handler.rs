@@ -148,7 +148,7 @@ impl InteractionHandler for AdminCommandHandler {
 impl AdminCommandHandler {
     pub fn new(utils: Arc<ApplicationCommandUtilities>) -> Self {
         Self {
-            matchmaking_settings_handler: MatchmakingSettingsHandler::new(utils.clone()),
+            matchmaking_settings_handler: MatchmakingSettingsHandler::new(utils),
             // matchmaking_panels_handler: MatchmakingPanelsHandler::new(utils.clone()),
             // utils,
         }

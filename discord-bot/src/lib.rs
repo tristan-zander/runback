@@ -1,3 +1,5 @@
+#![warn(clippy::pedantic)]
+
 pub mod entity;
 #[cfg(feature = "migrator")]
 pub mod migration;

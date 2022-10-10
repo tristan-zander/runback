@@ -82,11 +82,11 @@ impl InteractionHandler for PingCommandHandler {
 
         let command = builder.build();
         debug!(command = %format!("{:?}", command), "Created command");
-        return CommandGroupDescriptor {
+        CommandGroupDescriptor {
             name: "ping",
             description: "Commands that relate to response time",
             commands: Box::new([command]),
-        };
+        }
     }
 
     async fn process_command(&self, data: Box<ApplicationCommandData>) -> anyhow::Result<()> {

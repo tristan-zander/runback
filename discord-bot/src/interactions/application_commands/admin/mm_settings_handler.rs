@@ -42,7 +42,7 @@ impl InteractionHandler for MatchmakingSettingsHandler {
     async fn process_command(&self, data: Box<ApplicationCommandData>) -> anyhow::Result<()> {
         let command = &data.command;
         // VERIFY: Is it possible that we can send the information of other guilds here?
-        let guild_id = match command.guild_id {
+        let _guild_id = match command.guild_id {
             Some(id) => id,
             None => {
                 return Err(anyhow!("Can't find a guild id for this command."));
@@ -55,8 +55,7 @@ impl InteractionHandler for MatchmakingSettingsHandler {
             .command
             .data
             .options
-            .into_iter()
-            .nth(0)
+            .into_iter().next()
             .ok_or_else(|| anyhow!("could not get any command options"))?;
 
         let group_options = if let CommandOptionValue::SubCommandGroup(group) = group.value {
@@ -71,12 +70,11 @@ impl InteractionHandler for MatchmakingSettingsHandler {
             .into_iter()
             .filter(|o| {
                 if let CommandOptionValue::SubCommand(_) = o.value {
-                    return true;
+                    true
                 } else {
-                    return false;
+                    false
                 }
-            })
-            .nth(0)
+            }).next()
         {
             sub
         } else {
@@ -114,12 +112,11 @@ impl InteractionHandler for MatchmakingSettingsHandler {
                     .iter()
                     .filter_map(|o| {
                         if let CommandOptionValue::Channel(chan) = o.value {
-                            return Some(chan);
+                            Some(chan)
                         } else {
                             None
                         }
-                    })
-                    .nth(0)
+                    }).next()
                 {
                     // TODO: Ensure the value of the option is a valid channel id.
 
@@ -166,12 +163,11 @@ impl InteractionHandler for MatchmakingSettingsHandler {
                     .iter()
                     .filter_map(|o| {
                         if let CommandOptionValue::Role(role) = o.value {
-                            return Some(role);
+                            Some(role)
                         } else {
                             None
                         }
-                    })
-                    .nth(0)
+                    }).next()
                 {
                     model.admin_role = Set(Some(role.into()));
                     message = format!("Successfully set the admin role to <@&{}>.", role);
@@ -217,10 +213,9 @@ impl InteractionHandler for MatchmakingSettingsHandler {
         let guild_id = data
             .message
             .guild_id
-            .ok_or_else(|| anyhow!("you must run this command in a guild"))?
-            .to_owned();
+            .ok_or_else(|| anyhow!("you must run this command in a guild"))?;
 
-        let user = data
+        let _user = data
             .message
             .user
             .as_ref()
