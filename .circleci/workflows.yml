@@ -1,7 +1,7 @@
 version: 2.1
 
 orbs:
-  cli: digitalocean/cli@0.1.1
+  doctl: digitalocean/cli@0.1.1
   rust: circleci/rust@1.6.0
 
 parameters:
@@ -23,25 +23,21 @@ executors:
   common:
     docker:
       - image: alpine:latest
-    working_directory: /tmp
+    working_directory: /tmp/app
 
 workflows:
-  build-discord-bot:
+  discord-bot:
+    when:
+      or:
+        - << pipeline.parameters.modified-root-manifest >>
+        - << pipeline.parameters.modified-common >>
+        - << pipeline.parameters.modified-discord-bot >>
     jobs:
       - test-discord-bot
-    when:
-      or:
-        - << pipeline.parameters.modified-root-manifest >>
-        - << pipeline.parameters.modified-common >>
-        - << pipeline.parameters.modified-discord-bot >>
-
-  publish-discord-bot:
-    when:
-      or:
-        - << pipeline.parameters.modified-root-manifest >>
-        - << pipeline.parameters.modified-common >>
-        - << pipeline.parameters.modified-discord-bot >>
-    jobs:
+      - doctl/install_and_initialize_cli:
+          filters:
+            branches:
+              only: main
       - release-discord-bot:
           requires:
             - doctl/install_and_initialize_cli
@@ -57,12 +53,17 @@ jobs:
     steps:
       - run:
           name: Install Build Dependencies
-          command: apk add --no-cache openssl openssl-dev pkgconfig librdkafka cmake make gcc g++ git openssh
-      - rust/install
+          command: apk add --no-cache 'cargo>1.57' rustup openssl openssl-dev pkgconfig librdkafka cmake make gcc g++ git openssh curl
+      - run: mv /usr/bin/rustup-init /usr/bin/rustup
       - checkout
-      - rust/clippy
+      - rust/install
+      - rust/format:
+          working_directory: /tmp/app
+      - rust/clippy:
+          working_directory: /tmp/app
       - rust/test:
           package: discord-bot
+          working_directory: /tmp/app
 
   release-discord-bot:
     executor: common
@@ -75,16 +76,13 @@ jobs:
 
       - run:
           name: Install Build Dependencies
-          command: apk add --no-cache openssl openssl-dev pkgconfig librdkafka cmake make gcc g++ openssh
-
-      - rust/install
+          command: apk add --no-cache openssl openssl-dev pkgconfig librdkafka cmake make gcc g++ openssh 'cargo>1.57'
 
       - setup_remote_docker
 
       - checkout
 
-      # Temp debugging
-      - run: ls -alh
+      - rust/install
 
       - restore_cache:
           keys:
