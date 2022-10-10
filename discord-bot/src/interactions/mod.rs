@@ -3,7 +3,7 @@ pub mod panels;
 
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use entity::sea_orm::{prelude::Uuid, DatabaseConnection};
+use bot::entity::sea_orm::{prelude::Uuid, DatabaseConnection};
 
 use futures::future::BoxFuture;
 use tokio::time::timeout;
@@ -25,9 +25,8 @@ use crate::interactions::application_commands::{
 };
 
 use self::application_commands::{
-    admin::admin_handler::AdminCommandHandler, eula::EulaCommandHandler,
-    matchmaking::MatchmakingCommandHandler, CommandGroupDescriptor, InteractionHandler,
-    PingCommandHandler,
+    admin::admin_handler::AdminCommandHandler, matchmaking::MatchmakingCommandHandler,
+    CommandGroupDescriptor, InteractionHandler, PingCommandHandler,
 };
 
 type HandlerType = Arc<Box<dyn InteractionHandler + Send + Sync + 'static>>;
@@ -93,59 +92,91 @@ impl InteractionProcessor {
                 .flat_map(|grp| {
                     grp.1
                         .commands
-                        .into_iter()
-                        .map(|c| c.to_owned())
+                        .iter()
+                        .map(std::clone::Clone::clone)
                         .collect::<Vec<Command>>()
                 })
                 .collect::<Vec<_>>();
 
-            self.utils
-                .http_client
-                .interaction(self.utils.application_id)
-                .set_guild_commands(crate::CONFIG.debug_guild_id.unwrap(), commands.as_slice())
-                .exec()
-                .await?
-                .models()
-                .await?
+            if let Some(debug_guild) = crate::CONFIG.debug_guild_id {
+                self.utils
+                    .http_client
+                    .interaction(self.utils.application_id)
+                    .set_guild_commands(debug_guild, commands.as_slice())
+                    .exec()
+                    .await?
+                    .models()
+                    .await?
+            } else {
+                self.utils
+                    .http_client
+                    .interaction(self.utils.application_id)
+                    .set_global_commands(commands.as_slice())
+                    .exec()
+                    .await?
+                    .models()
+                    .await?
+            }
         };
 
         debug!(commands = ?serde_json::to_string(&self.commands).unwrap(), "Sent commands to discord");
 
         self.command_groups = groups.iter().map(|g| g.1.clone()).collect();
         for (handler, descriptor) in groups {
-            debug!(desc = ?descriptor, "Descriptor");
+            debug!(desc = ?descriptor, name = ?descriptor.name, "descriptor");
             let old = self
                 .component_handlers
                 .insert(descriptor.name, handler.clone());
 
+            info!(name = ?descriptor.name, "inserting command handler");
+
             if let Some(_) = old {
                 return Err(anyhow!(
-                    "Tried to overwrite a component handler: {}",
+                    "tried to overwrite a component handler: {}",
                     descriptor.name
                 ));
             }
 
-            for c in self.commands.iter() {
-                if c.id.is_none()
-                    || descriptor
-                        .commands
-                        .into_iter()
-                        .find(|desc_comm| desc_comm.name == c.name)
-                        .is_none()
-                {
-                    debug!(command = ?c.name, "Command does not have an id");
-                    continue;
-                }
-
+            if let Some(command) = self.commands.iter().find(|c| c.name == descriptor.name) {
                 if let Some(old) = self.application_command_handlers.insert(
-                    c.id.ok_or_else(|| anyhow!("Command does not have an id: {}", c.name))?,
+                    command
+                        .id
+                        .ok_or_else(|| anyhow!("command does not have an id: {}", command.name))?,
                     handler.clone(),
                 ) {
                     return Err(anyhow!(
-                        "Inserted a handler over a command... {:#?}",
+                        "inserted a handler over a command... {:#?}",
                         old.describe().name
                     ));
                 }
+            } else {
+                warn!(name = ?descriptor.name, "no command found");
+            }
+        }
+
+        // Commands that are currently in Discord
+        let global_commands = self
+            .utils
+            .http_client
+            .interaction(self.utils.application_id)
+            .global_commands()
+            .exec()
+            .await?
+            .models()
+            .await?;
+
+        for c in global_commands {
+            if self.commands.iter().any(|new_c| c.id == new_c.id) {
+                debug!(name = ?c.name, id = ?c.id, "found matching command");
+            } else {
+                // Remove the command from Discord. We're no longer going to support it
+                warn!(name = ?c.name, id = ?c.id, "unknown global command found on Discord");
+                self.utils
+                    .http_client
+                    .interaction(self.utils.application_id)
+                    .delete_global_command(c.id.ok_or_else(|| anyhow!("global command has no ID"))?) // realistically, this error will never be shown
+                    .exec()
+                    .await?;
             }
         }
 
@@ -168,9 +199,10 @@ impl InteractionProcessor {
                 // self.application_command_handlers
                 //     .on_command_receive(command.as_ref())
                 //     .await?;
+                debug!(id = ?&command.data.id, "received application command");
                 if let Some(handler) = self.application_command_handlers.get(&command.data.id) {
                     let data = Box::new(ApplicationCommandData {
-                        command: *command.to_owned(),
+                        command: *command.clone(),
                         id: Uuid::new_v4(),
                     });
                     let fut = Box::pin(
@@ -191,7 +223,7 @@ impl InteractionProcessor {
                 if let Some((handler_name, leftover)) = message.data.custom_id.split_once(':') {
                     if let Some(handler) = self.component_handlers.get(handler_name) {
                         let data = Box::new(MessageComponentData {
-                            id:Uuid::new_v4(), message: *message.to_owned(), action: leftover.to_string() }
+                            id:Uuid::new_v4(), message: *message.clone(), action: leftover.to_string() }
                         );
                         let handler = handler.clone();
                         let fut = Box::pin(async move { handler.process_component(data).await });
@@ -212,7 +244,7 @@ impl InteractionProcessor {
         }
 
         trace!("Ended interaction response.");
-        return Err(anyhow!("Interaction was unmatched"));
+        Err(anyhow!("Interaction was unmatched"))
     }
 
     async fn execute_application_command(
@@ -236,7 +268,7 @@ impl InteractionProcessor {
 
         let name = data.command.data.name.clone();
         let token = data.command.token.clone();
-        let runback_id = data.id.clone();
+        let runback_id = data.id;
         let timeout = timeout(
             Duration::from_secs(5),
             handler
@@ -257,7 +289,7 @@ impl InteractionProcessor {
                         .embeds(&[EmbedBuilder::new()
                             .description("An error has occurred.")
                             .footer(
-                                EmbedFooterBuilder::new(runback_id.to_hyphenated_ref().to_string())
+                                EmbedFooterBuilder::new(runback_id.hyphenated().to_string())
                                     .build(),
                             )
                             .field(EmbedFieldBuilder::new("error", e.to_string()).build())
@@ -267,7 +299,7 @@ impl InteractionProcessor {
                         .await?;
                 }
 
-                return Ok(());
+                Ok(())
             }
             Err(_) => {
                 utils
@@ -277,7 +309,7 @@ impl InteractionProcessor {
                     .content(Some("Command timed out."))?
                     .exec()
                     .await?;
-                return Err(anyhow!("Command timed out: {}", name));
+                Err(anyhow!("Command timed out: {}", name))
             }
         }
         // handler.process_command(data).await

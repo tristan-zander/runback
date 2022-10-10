@@ -1,2 +1,7 @@
 # Prevent people from accidentally committing secrets
 Bot.toml
+
+**/target
+**/*.env
+
+node_modules/

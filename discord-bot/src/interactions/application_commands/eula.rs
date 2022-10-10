@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
+use bot::entity::prelude::*;
+
 use chrono::Utc;
-use entity::sea_orm::{ActiveModelTrait, EntityTrait, IntoActiveModel, Set};
+use sea_orm::{prelude::*, IntoActiveModel, Set};
 use twilight_model::{
     application::{command::CommandType, interaction::application_command::CommandOptionValue},
     channel::message::MessageFlags,
@@ -15,8 +17,8 @@ use super::{
     InteractionHandler, MessageComponentData,
 };
 
-// Consider getting this path from an environment variable
-const EULA: &'static str = include_str!("../../../../EULA.md");
+// TODO: Make a distinct EULA for the bot itself
+const EULA: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../", "EULA.md"));
 
 pub struct EulaCommandHandler {
     pub utils: Arc<ApplicationCommandUtilities>,
@@ -72,7 +74,7 @@ impl InteractionHandler for EulaCommandHandler {
         };
 
         let options = &command.data.options;
-        if options.len() > 0 && options[0].name.as_str() == "accept" {
+        if !options.is_empty() && options[0].name.as_str() == "accept" {
             match &options[0].value {
                 CommandOptionValue::String(accepted) => {
                     if accepted.as_str() != "accept" {
@@ -98,7 +100,7 @@ impl InteractionHandler for EulaCommandHandler {
                         return Ok(());
                     }
 
-                    let res = entity::matchmaking::Setting::find_by_id(gid.into())
+                    let res = MatchmakingSettings::find_by_id(gid.into())
                         .one(self.utils.db_ref())
                         .await?;
                     match res {
@@ -129,7 +131,7 @@ impl InteractionHandler for EulaCommandHandler {
                             }
                         }
                         None => {
-                            let settings = entity::matchmaking::settings::ActiveModel {
+                            let settings = matchmaking_settings::ActiveModel {
                                 guild_id: Set(gid.into()),
                                 has_accepted_eula: Set(Some(Utc::now())),
                                 last_updated: Set(Utc::now()),

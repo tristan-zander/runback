@@ -1,6 +1,6 @@
 use std::error::Error;
 
-use migration::DbErr;
+use sea_orm::DbErr;
 use tracing::instrument::Instrumented;
 use twilight_gateway::cluster::ClusterStartError;
 use twilight_http::response::DeserializeBodyError;
@@ -58,7 +58,7 @@ impl From<Box<dyn Error>> for RunbackError {
     fn from(e: Box<dyn Error>) -> Self {
         RunbackError {
             message: format!("Unknown error: {}", e),
-            inner: Some(e.into()),
+            inner: Some(e),
         }
     }
 }

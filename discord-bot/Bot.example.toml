@@ -2,6 +2,7 @@
 # token = ""
 log_level = "WARN"
 # debug_guild_id = ""
+log_as_json = false
 
 [default.db]
 protocol = "postgres"

@@ -1,0 +1,19 @@
+version: "3.9"
+services:
+  matchmaking:
+    build: matchmaking-service
+    ports:
+      - 8000:9001
+    depends_on:
+      - redis
+
+  discord-bot:
+    build: discord-bot
+    ports:
+      - 8000:9001
+    links:
+      - redis
+  redis:
+    image: redis
+  keycloak:
+    image: bitnami/keycloak

@@ -12,14 +12,12 @@ use crate::interactions::application_commands::{
 
 use crate::interactions::application_commands::ApplicationCommandUtilities;
 
-use super::{
-    mm_panels_handler::MatchmakingPanelsHandler, mm_settings_handler::MatchmakingSettingsHandler,
-};
+use super::mm_settings_handler::MatchmakingSettingsHandler;
 
 pub struct AdminCommandHandler {
     // utils: Arc<ApplicationCommandUtilities>,
     matchmaking_settings_handler: MatchmakingSettingsHandler,
-    matchmaking_panels_handler: MatchmakingPanelsHandler,
+    // matchmaking_panels_handler: MatchmakingPanelsHandler,
 }
 
 #[async_trait]
@@ -95,9 +93,10 @@ impl InteractionHandler for AdminCommandHandler {
                     .await?;
             }
             "matchmaking-panels" => {
-                self.matchmaking_panels_handler
-                    .process_command(data)
-                    .await?;
+                // self.matchmaking_panels_handler
+                //     .process_command(data)
+                //     .await?;
+                return Err(anyhow!("Panels are no longer supported"));
             }
             _ => {
                 debug!(name = %option.name.as_str(), "Unknown admin subcommand option");
@@ -129,11 +128,12 @@ impl InteractionHandler for AdminCommandHandler {
                     return Ok(());
                 }
                 "panels" => {
-                    data.action = field.to_string();
-                    self.matchmaking_panels_handler
-                        .process_component(data)
-                        .await?;
-                    return Ok(());
+                    // data.action = field.to_string();
+                    // self.matchmaking_panels_handler
+                    //     .process_component(data)
+                    //     .await?;
+                    // return Ok(());
+                    return Err(anyhow!("Panels are no longer supported"));
                 }
                 _ => {
                     return Err(anyhow!("Unhandled action: {}", data.action));
@@ -148,8 +148,8 @@ impl InteractionHandler for AdminCommandHandler {
 impl AdminCommandHandler {
     pub fn new(utils: Arc<ApplicationCommandUtilities>) -> Self {
         Self {
-            matchmaking_settings_handler: MatchmakingSettingsHandler::new(utils.clone()),
-            matchmaking_panels_handler: MatchmakingPanelsHandler::new(utils.clone()),
+            matchmaking_settings_handler: MatchmakingSettingsHandler::new(utils),
+            // matchmaking_panels_handler: MatchmakingPanelsHandler::new(utils.clone()),
             // utils,
         }
     }

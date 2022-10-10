@@ -1,11 +1,11 @@
 use chrono::Utc;
 use dashmap::DashMap;
-use entity::sea_orm::prelude::{DateTimeUtc, Uuid};
+use sea_orm::prelude::*;
 use tokio::task::JoinHandle;
 use twilight_gateway::Event;
 use twilight_model::{
     application::{
-        command::{BaseCommandOptionData, ChoiceCommandOptionData, CommandOption, CommandType},
+        command::{BaseCommandOptionData, CommandOption, CommandType},
         component::{button::ButtonStyle, ActionRow, Button, Component},
     },
     channel::{
@@ -151,15 +151,16 @@ impl InteractionHandler for MatchmakingCommandHandler {
             .user
             .ok_or_else(|| anyhow!("could not get user data for caller"))?;
 
-        match data
+        let action = data
             .command
             .data
             .options
             .get(0)
             .ok_or_else(|| anyhow!("could not get subcommand option"))?
             .name
-            .as_str()
-        {
+            .clone();
+
+        match action.as_str() {
             "play-against" => {
                 let resolved = data
                     .command
@@ -167,7 +168,7 @@ impl InteractionHandler for MatchmakingCommandHandler {
                     .resolved
                     .ok_or_else(|| anyhow!("cannot get the resolved command user data"))?;
 
-                let invited = resolved.users.values().nth(0).ok_or_else(|| {
+                let invited = resolved.users.values().next().ok_or_else(|| {
                     anyhow!("cannot get the user specified in \"play-against\" command")
                 })?;
 
@@ -262,7 +263,7 @@ impl InteractionHandler for MatchmakingCommandHandler {
                 return Ok(());
             }
             "done" => {
-                if let Some((id, s)) = self.sessions.remove(&data.command.channel_id) {
+                if let Some((id, _s)) = self.sessions.remove(&data.command.channel_id) {
                     // TODO: Validate that the user is a part of the session.
 
                     match self
@@ -295,12 +296,7 @@ impl InteractionHandler for MatchmakingCommandHandler {
 
                 Ok(())
             }
-            _ => {
-                return Err(anyhow!(
-                    "command handler for {} not found.",
-                    data.command.data.name.as_str()
-                ))
-            }
+            _ => return Err(anyhow!("command handler for \"{}\" not found.", action)),
         }
     }
 
@@ -564,10 +560,8 @@ impl MatchmakingCommandHandler {
             utils
                 .standby
                 .wait_for_event_stream(move |e: &Event| match e {
-                    Event::ChannelDelete(chan) => {
-                        return s.contains_key(&chan.id);
-                    }
-                    _ => return false,
+                    Event::ChannelDelete(chan) => s.contains_key(&chan.id),
+                    _ => false,
                 })
         };
 
@@ -586,7 +580,7 @@ impl MatchmakingCommandHandler {
 
                     sessions.retain(|_key, val: &mut Session| {
                         let res = val.timeout_after > now;
-                        if res == false {
+                        if !res {
                             thread_ids_to_remove.push(val.thread);
                         }
                         res
@@ -636,7 +630,7 @@ impl MatchmakingCommandHandler {
             .create_message(channel)
             .allowed_mentions(Some(
                 &AllowedMentionsBuilder::new()
-                    .user_ids(users.into_iter().map(|id| id.to_owned()))
+                    .user_ids(users.into_iter().copied())
                     .build(),
             ))
             .embeds(&[EmbedBuilder::new()
@@ -759,7 +753,7 @@ impl MatchmakingCommandHandler {
         // The person that cancelled the invitation
         canceller: &User,
         guild: &Guild,
-        invitation: &MatchInvitation,
+        _invitation: &MatchInvitation,
     ) -> anyhow::Result<Message> {
         // TODO: Cache this
         let dm = self

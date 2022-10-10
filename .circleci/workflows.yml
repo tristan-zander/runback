@@ -1,0 +1,125 @@
+version: 2.1
+
+orbs:
+  doctl: digitalocean/cli@0.1.1
+
+parameters:
+  modified-root-manifest:
+    type: boolean
+    default: false
+  modified-common:
+    type: boolean
+    default: false
+  modified-discord-bot:
+    type: boolean
+    default: false
+  modified-matchmaking-service:
+    type: boolean
+    default: false
+
+executors:
+  # TODO: make a common Dockerfile in the common package
+  common:
+    docker:
+      - image: alpine:latest
+    working_directory: /tmp/app
+
+workflows:
+  discord-bot:
+    when:
+      or:
+        - << pipeline.parameters.modified-root-manifest >>
+        - << pipeline.parameters.modified-common >>
+        - << pipeline.parameters.modified-discord-bot >>
+    jobs:
+      - test-discord-bot
+      - doctl/install_and_initialize_cli:
+          filters:
+            branches:
+              only: main
+      - release-discord-bot:
+          requires:
+            - doctl/install_and_initialize_cli
+            - test-discord-bot
+          filters:
+            branches:
+              only: main
+
+jobs:
+  test-discord-bot:
+    executor: common
+    resource_class: large
+    steps:
+      - run:
+          name: Install Build Dependencies
+          command: apk add --no-cache rustup openssl openssl-dev pkgconfig librdkafka cmake make gcc g++ git openssh curl
+      - run:
+          name: Install Rust
+          command: |
+            rustup-init -y
+            source ~/.cargo/env
+            rustup toolchain install stable
+            echo 'source $HOME/.cargo/env' >> $BASH_ENV
+      - checkout
+      - restore_cache:
+          keys:
+            - 'cargo-{{ checksum "Cargo.lock" }}'
+      - run:
+          name: Check formatting
+          command: |
+            source ~/.cargo/env
+            rustup component add rustfmt
+            cargo fmt -p discord-bot --check
+      - run:
+          name: Run Clippy
+          command: |
+            source ~/.cargo/env
+            rustup component add clippy
+            cargo clippy --release -p discord-bot
+      - run:
+          name: Run tests
+          command: |
+            source ~/.cargo/env
+            cargo test --release -p discord-bot
+      - save_cache:
+          key: 'cargo-{{ checksum "Cargo.lock" }}'
+          paths:
+            - ~/.cargo
+
+  release-discord-bot:
+    executor: common
+    resource_class: small
+    steps:
+      - run:
+          name: Install Script Dependencies
+          command: |
+            apk add --no-cache sudo docker npm git
+
+      - run:
+          name: Install Build Dependencies
+          command: apk add --no-cache openssl openssl-dev pkgconfig librdkafka cmake make gcc g++ openssh 'cargo>1.57'
+
+      - setup_remote_docker
+
+      - checkout
+
+      - restore_cache:
+          keys:
+            - semantic-release-rust
+      - run:
+          name: Setup semantic release
+          command: |
+            npm install
+            cargo install semantic-release-rust --version 1.0.0-alpha.8
+            cargo install cargo-workspaces --version ^0.2
+            export PATH=$PATH:~/.cargo/bin
+      - save_cache:
+          paths:
+            - "/root/.cargo/"
+          key: semantic-release-rust
+
+      - run: cd discord-bot/
+
+      - run:
+          name: Run semantic-release
+          command: npx semantic-release

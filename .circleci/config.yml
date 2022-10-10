@@ -1,0 +1,15 @@
+version: 2.1
+setup: true
+orbs:
+  path-filtering: circleci/path-filtering@0.1.3
+workflows:
+  setup:
+    jobs:
+      - path-filtering/filter:
+          base-revision: main
+          mapping: |
+            Config.(toml|lock) modified-root-manifest true
+            common/.* modified-common true
+            discord-bot/.* modified-discord-bot true
+            matchmaking-service/.* modified-matchmaking-service true
+          config-path: .circleci/workflows.yml

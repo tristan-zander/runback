@@ -1,0 +1,89 @@
+# This is the compose file for live-reloading development environments.
+# This should NEVER be enabled in production.
+version: "3.9"
+services:
+  discord-bot:
+    build:
+      dockerfile: development.Dockerfile
+      context: .
+    volumes:
+      - .:/var/app
+      - registry_cache:/root/.cargo
+    depends_on:
+      # - redis
+      - kafka
+      - db
+
+  # redis:
+  #   image: redis
+
+  pgadmin:
+    image: dpage/pgadmin4
+    ports:
+      - 9000:80
+    restart: always
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: secret
+      PGADMIN_LISTEN_PORT: 80
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      - db
+
+  # keycloak:
+  #   image: bitnami/keycloak
+  #   ports:
+  #     - 8080:8080
+  #     - 8443:8443
+  #   environment:
+  #     - KEYCLOAK_ADMIN_USER=admin
+  #     - KEYCLOAK_ADMIN_PASSWORD=password
+  #     - KEYCLOAK_DATABASE_HOST=db
+  #     - KEYCLOAK_DATABASE_NAME=keycloak
+  #     - KEYCLOAK_DATABASE_USER=gale
+  #     - KEYCLOAK_DATABASE_PASSWORD=password
+  #     - KEYCLOAK_DATABASE_SCHEMA=public
+  #   depends_on:
+  #     - db
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:latest
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - 22181:2181
+
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    depends_on:
+      - zookeeper
+    ports:
+      - 29092:29092
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+
+  db:
+    image: postgres:14
+    restart: always
+    volumes:
+      - postgresql_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=gale
+      - POSTGRES_PASSWORD=password
+    ports:
+      - 5432:5432
+
+volumes:
+  postgresql_data:
+    driver: local
+  registry_cache:
+    driver: local
+  pgadmin_data:
+    driver: local

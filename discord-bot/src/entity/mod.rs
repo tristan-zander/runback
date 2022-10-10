@@ -1,6 +1,3 @@
-#[macro_use]
-extern crate tracing;
-
 use std::{marker::PhantomData, num::NonZeroU64};
 
 use sea_orm::{
@@ -10,8 +7,18 @@ use sea_orm::{
 use serde::{Deserialize, Serialize};
 use twilight_model::id::Id;
 
-pub mod discord_user;
-pub mod matchmaking;
+pub mod prelude;
+
+pub mod game;
+pub mod game_character;
+pub mod matchmaking_invitation;
+pub mod matchmaking_lobbies;
+pub mod matchmaking_player_invitation;
+pub mod matchmaking_player_lobby;
+pub mod matchmaking_settings;
+pub mod sea_orm_active_enums;
+pub mod state;
+pub mod users;
 
 pub use sea_orm;
 
@@ -26,7 +33,7 @@ pub struct IdWrapper<T> {
 impl<T> Clone for IdWrapper<T> {
     fn clone(&self) -> Self {
         Self {
-            inner: self.inner.clone(),
+            inner: self.inner,
             data: PhantomData {},
         }
     }
@@ -45,11 +52,13 @@ impl<T> PartialEq for IdWrapper<T> {
 }
 
 impl<T> IdWrapper<T> {
-    /// Translate the IdWrapper into a proper Id.
+    /// Translate the `IdWrapper` into a proper Id.
+    #[must_use]
     pub fn into_id(&self) -> Id<T> {
         Id::from(self.inner)
     }
 
+    #[must_use]
     pub fn new(n: u64) -> Option<Self> {
         if n == 0 {
             return None;
@@ -58,6 +67,7 @@ impl<T> IdWrapper<T> {
     }
 
     /// Create an Id without checking that it could equal 0
+    #[must_use]
     pub unsafe fn new_unchecked(n: u64) -> Self {
         IdWrapper {
             inner: NonZeroU64::new_unchecked(n),
@@ -111,10 +121,12 @@ impl<T: std::fmt::Debug> TryGetable for IdWrapper<T> {
     ) -> Result<Self, sea_orm::TryGetError> {
         let val: Option<i64> = res.try_get(pre, col).map_err(sea_orm::TryGetError::DbErr)?;
         if val.is_none() {
-            return Err(sea_orm::TryGetError::Null);
+            return Err(sea_orm::TryGetError::Null("Value was null.".to_string()));
         }
         unsafe {
-            IdWrapper::from_database_i64(val.unwrap_unchecked()).ok_or(sea_orm::TryGetError::Null)
+            IdWrapper::from_database_i64(val.unwrap_unchecked()).ok_or(sea_orm::TryGetError::Null(
+                "Could not convert i64 into Nonzero u64".to_string(),
+            ))
         }
     }
 }
@@ -137,7 +149,7 @@ impl<T> ValueType for IdWrapper<T> {
             }
         }
 
-        return Err(sea_orm::sea_query::ValueTypeErr);
+        Err(sea_orm::sea_query::ValueTypeErr)
     }
 
     fn type_name() -> String {

@@ -136,7 +136,7 @@ mod tests {
                 Ok(())
             }
 
-            fn execute(&self, data: &<Self::Event as Event>::EventData) -> anyhow::Result<()> {
+            fn execute(&self, _data: &<Self::Event as Event>::EventData) -> anyhow::Result<()> {
                 unsafe {
                     COUNTER += 1;
                 }

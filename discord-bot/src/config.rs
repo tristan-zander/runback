@@ -10,6 +10,7 @@ use twilight_model::id::{marker::GuildMarker, Id};
 pub struct Config {
     pub token: String,
     pub debug_guild_id: Option<Id<GuildMarker>>,
+    pub log_as_json: bool,
     pub log_level: LogLevel,
     pub db: DatabaseSettings,
 }
@@ -17,6 +18,7 @@ pub struct Config {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct DatabaseSettings {
     pub protocol: String,
+    pub port: u32,
     pub username: String,
     pub password: Option<String>,
     pub host: String,
@@ -35,6 +37,7 @@ impl Default for DatabaseSettings {
             host: "db".to_owned(),
             db_name: "discord-client".to_owned(),
             extra_options: "".to_owned(),
+            port: 5432,
         }
     }
 }
@@ -46,13 +49,14 @@ impl Default for Config {
             debug_guild_id: Default::default(),
             log_level: Default::default(),
             db: Default::default(),
+            log_as_json: false,
         }
     }
 }
 
 impl Config {
     pub fn new() -> Result<Config, figment::Error> {
-        Ok(Self::figment().extract()?)
+        Self::figment().extract()
     }
 
     pub fn figment() -> Figment {
