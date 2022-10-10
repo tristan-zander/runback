@@ -44,7 +44,7 @@ impl OpenIDUtil {
         keycloak_url: String,
         redirect_url: Option<String>,
     ) -> Result<OpenIDUtil, Box<dyn Error>> {
-        if client_id.len() <= 0 {
+        if client_id.len() == 0 {
             return Err(Box::new(OpenIDError {
                 message: "Client ID cannot be empty.".into(),
             }));
@@ -52,7 +52,7 @@ impl OpenIDUtil {
         let client_id = ClientId::new(client_id);
         let client_secret = match client_secret {
             Some(c) => {
-                if c.len() <= 0 {
+                if c.len() == 0 {
                     return Err(Box::new(OpenIDError {
                         message: "Client secret cannot be empty.".into(),
                     }));
