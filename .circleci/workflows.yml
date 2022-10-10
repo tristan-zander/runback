@@ -58,6 +58,7 @@ jobs:
           command: |
             rustup-init -y
             source ~/.cargo/env
+            export PATH=$PATH:/root/.cargo/bin
       - checkout
       - restore_cache:
           keys:
