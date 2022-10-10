@@ -58,7 +58,7 @@ jobs:
           command: |
             rustup-init -y
             source ~/.cargo/env
-            rustup toolchain install $RUST_VERSION
+            rustup toolchain install stable
             echo 'source $HOME/.cargo/env' >> $BASH_ENV
       - checkout
       - restore_cache:
