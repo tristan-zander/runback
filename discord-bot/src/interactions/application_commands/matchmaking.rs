@@ -157,7 +157,8 @@ impl InteractionHandler for MatchmakingCommandHandler {
             .options
             .get(0)
             .ok_or_else(|| anyhow!("could not get subcommand option"))?
-            .name.clone();
+            .name
+            .clone();
 
         match action.as_str() {
             "play-against" => {
@@ -559,9 +560,7 @@ impl MatchmakingCommandHandler {
             utils
                 .standby
                 .wait_for_event_stream(move |e: &Event| match e {
-                    Event::ChannelDelete(chan) => {
-                        s.contains_key(&chan.id)
-                    }
+                    Event::ChannelDelete(chan) => s.contains_key(&chan.id),
                     _ => false,
                 })
         };

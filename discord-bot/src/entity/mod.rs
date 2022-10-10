@@ -53,11 +53,13 @@ impl<T> PartialEq for IdWrapper<T> {
 
 impl<T> IdWrapper<T> {
     /// Translate the `IdWrapper` into a proper Id.
-    #[must_use] pub fn into_id(&self) -> Id<T> {
+    #[must_use]
+    pub fn into_id(&self) -> Id<T> {
         Id::from(self.inner)
     }
 
-    #[must_use] pub fn new(n: u64) -> Option<Self> {
+    #[must_use]
+    pub fn new(n: u64) -> Option<Self> {
         if n == 0 {
             return None;
         }
@@ -65,7 +67,8 @@ impl<T> IdWrapper<T> {
     }
 
     /// Create an Id without checking that it could equal 0
-    #[must_use] pub unsafe fn new_unchecked(n: u64) -> Self {
+    #[must_use]
+    pub unsafe fn new_unchecked(n: u64) -> Self {
         IdWrapper {
             inner: NonZeroU64::new_unchecked(n),
             data: PhantomData {},

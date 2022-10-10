@@ -55,7 +55,8 @@ impl InteractionHandler for MatchmakingSettingsHandler {
             .command
             .data
             .options
-            .into_iter().next()
+            .into_iter()
+            .next()
             .ok_or_else(|| anyhow!("could not get any command options"))?;
 
         let group_options = if let CommandOptionValue::SubCommandGroup(group) = group.value {
@@ -74,7 +75,8 @@ impl InteractionHandler for MatchmakingSettingsHandler {
                 } else {
                     false
                 }
-            }).next()
+            })
+            .next()
         {
             sub
         } else {
@@ -116,7 +118,8 @@ impl InteractionHandler for MatchmakingSettingsHandler {
                         } else {
                             None
                         }
-                    }).next()
+                    })
+                    .next()
                 {
                     // TODO: Ensure the value of the option is a valid channel id.
 
@@ -167,7 +170,8 @@ impl InteractionHandler for MatchmakingSettingsHandler {
                         } else {
                             None
                         }
-                    }).next()
+                    })
+                    .next()
                 {
                     model.admin_role = Set(Some(role.into()));
                     message = format!("Successfully set the admin role to <@&{}>.", role);

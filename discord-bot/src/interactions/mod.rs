@@ -25,9 +25,8 @@ use crate::interactions::application_commands::{
 };
 
 use self::application_commands::{
-    admin::admin_handler::AdminCommandHandler,
-    matchmaking::MatchmakingCommandHandler, CommandGroupDescriptor, InteractionHandler,
-    PingCommandHandler,
+    admin::admin_handler::AdminCommandHandler, matchmaking::MatchmakingCommandHandler,
+    CommandGroupDescriptor, InteractionHandler, PingCommandHandler,
 };
 
 type HandlerType = Arc<Box<dyn InteractionHandler + Send + Sync + 'static>>;
