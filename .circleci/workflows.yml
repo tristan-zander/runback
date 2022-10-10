@@ -56,7 +56,9 @@ jobs:
       - checkout
       - run:
           name: Coverage with docker
-          command: docker run --security-opt seccomp=unconfined -v "${PWD}:/volume" xd009642/tarpaulin sh -c "cargo tarpaulin -p discord-bot --release --all-features -l --locked --out Xml --ciserver circle-ci --engine Llvm"
+          command: |
+            docker run --security-opt seccomp=unconfined -v "${PWD}:/volume" xd009642/tarpaulin sh -c \
+            "apt install librdkafka-dev cmake make libssl-dev && cargo tarpaulin -p discord-bot --release --all-features -l --locked --out Xml --ciserver circle-ci --engine Llvm"
       - run:
           name: Install Test Coverage
           command: |
