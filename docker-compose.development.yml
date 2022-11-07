@@ -28,8 +28,23 @@ services:
       - .:/var/app
       - build_cache:/root/.cargo
     depends_on:
-      - redis
+      # - redis
       - kafka
+      - db
+  
+  pgadmin:
+    image: dpage/pgadmin4
+    ports:
+      - 9000:80
+    restart: always
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: secret
+      PGADMIN_LISTEN_PORT: 80
+      GUNICORN_ACCESS_LOGFILE: /var/lib/pgadmin/log.log
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
       - db
 
   redis:
@@ -86,4 +101,6 @@ volumes:
   postgresql_data:
     driver: local
   build_cache:
+    driver: local
+  pgadmin_data:
     driver: local
