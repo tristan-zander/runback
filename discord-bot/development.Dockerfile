@@ -8,6 +8,6 @@ FROM alpine:edge
 RUN apk add --no-cache 'cargo>1.57' openssl openssl-dev pkgconfig librdkafka cmake make gcc g++
 RUN cargo install cargo-watch
 VOLUME /var/app
-WORKDIR /var/app
+WORKDIR /var/app/
 ENV RUST_BACKTRACE=1
-ENTRYPOINT ["/root/.cargo/bin/cargo-watch", "-x", "run"]
+ENTRYPOINT ["/root/.cargo/bin/cargo-watch", "-x", "run --bin discord-bot"]
