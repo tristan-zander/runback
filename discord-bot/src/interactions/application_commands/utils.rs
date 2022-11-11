@@ -3,6 +3,7 @@ use chrono::Utc;
 use sea_orm::{prelude::*, DatabaseConnection, Set};
 use twilight_cache_inmemory::InMemoryCache;
 use twilight_model::{
+    application::interaction::Interaction,
     http::interaction::InteractionResponse,
     id::{
         marker::{ApplicationMarker, GuildMarker, UserMarker},
@@ -16,12 +17,10 @@ use twilight_standby::Standby;
 
 use std::sync::Arc;
 
-use twilight_model::application::interaction::ApplicationCommand as DiscordApplicationCommand;
-
 /// Contains any helper functions to help make writing application command handlers easier
 // Make sure this is thread safe
 #[derive(Debug)]
-pub struct ApplicationCommandUtilities {
+pub struct CommonUtilities {
     pub http_client: DiscordHttpClient,
     pub application_id: Id<ApplicationMarker>,
     pub db: Arc<Box<DatabaseConnection>>,
@@ -29,7 +28,7 @@ pub struct ApplicationCommandUtilities {
     pub standby: Arc<Standby>,
 }
 
-impl ApplicationCommandUtilities {
+impl CommonUtilities {
     pub async fn new(
         db: Arc<Box<DatabaseConnection>>,
         cache: Arc<InMemoryCache>,
@@ -75,13 +74,13 @@ impl ApplicationCommandUtilities {
 
     pub async fn send_message(
         &self,
-        command: &DiscordApplicationCommand,
+        interaction: &Interaction,
         message: &InteractionResponse,
     ) -> anyhow::Result<()> {
         let res = self
             .http_client
             .interaction(self.application_id)
-            .create_response(command.id, command.token.as_str(), message)
+            .create_response(interaction.id, interaction.token.as_str(), message)
             .exec()
             .await?;
 

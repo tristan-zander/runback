@@ -1,3 +1,4 @@
+use bot::entity;
 use chrono::Utc;
 use dashmap::DashMap;
 use sea_orm::prelude::*;
@@ -28,8 +29,8 @@ use twilight_util::builder::{
 };
 
 use super::{
-    ApplicationCommandData, ApplicationCommandUtilities, CommandGroupDescriptor,
-    InteractionHandler, MessageComponentData,
+    ApplicationCommandData, CommandGroupDescriptor, CommonUtilities, InteractionHandler,
+    MessageComponentData,
 };
 
 use futures::StreamExt;
@@ -71,7 +72,7 @@ impl MatchInvitation {
 }
 
 pub struct MatchmakingCommandHandler {
-    utils: Arc<ApplicationCommandUtilities>,
+    utils: Arc<CommonUtilities>,
     sessions: Arc<DashMap<Id<ChannelMarker>, Session>>,
     invitations: Arc<DashMap<Id<MessageMarker>, MatchInvitation>>,
     _background_task: JoinHandle<()>,
@@ -115,18 +116,13 @@ impl InteractionHandler for MatchmakingCommandHandler {
         // )
         .option(
             SubCommandBuilder::new(
-                "settings".into(),
-                "View and update settings such as default character".into(),
+                "settings",
+                "View and update settings such as default character",
             )
             .build(),
         )
-        .option(
-            SubCommandBuilder::new("done".into(), "Finish your matchmaking session".into()).build(),
-        )
-        .option(
-            SubCommandBuilder::new("report-score".into(), "Report the score of a match".into())
-                .build(),
-        );
+        .option(SubCommandBuilder::new("done", "Finish your matchmaking session").build())
+        .option(SubCommandBuilder::new("report-score", "Report the score of a match").build());
 
         let command = builder.build();
         CommandGroupDescriptor {
@@ -137,13 +133,13 @@ impl InteractionHandler for MatchmakingCommandHandler {
     }
 
     async fn process_command(&self, data: Box<ApplicationCommandData>) -> anyhow::Result<()> {
-        if let Some(_target) = data.command.data.target_id {
+        if let Some(_target) = data.command.target_id {
             // Then start a mm session with that user. It's not chat message command,
             // but a click interaction.
         }
 
         let member = data
-            .command
+            .interaction
             .member
             .ok_or_else(|| anyhow!("command cannot be run in a DM"))?;
 
@@ -153,7 +149,6 @@ impl InteractionHandler for MatchmakingCommandHandler {
 
         let action = data
             .command
-            .data
             .options
             .get(0)
             .ok_or_else(|| anyhow!("could not get subcommand option"))?
@@ -164,7 +159,6 @@ impl InteractionHandler for MatchmakingCommandHandler {
             "play-against" => {
                 let resolved = data
                     .command
-                    .data
                     .resolved
                     .ok_or_else(|| anyhow!("cannot get the resolved command user data"))?;
 
@@ -190,7 +184,10 @@ impl InteractionHandler for MatchmakingCommandHandler {
                     // TODO: make sure that the channel actually exists.
                     channel = cid.into_id();
                 } else {
-                    channel = data.command.channel_id;
+                    channel = data
+                        .interaction
+                        .channel_id
+                        .ok_or_else(|| anyhow!("command was not run in a channel"))?;
                 }
 
                 let msg = self
@@ -240,7 +237,7 @@ impl InteractionHandler for MatchmakingCommandHandler {
                     .utils
                     .http_client
                     .interaction(self.utils.application_id)
-                    .create_followup(data.command.token.as_str())
+                    .create_followup(data.interaction.token.as_str())
                     .content(format!("Sent a request in <#{}>", channel).as_str())?
                     .flags(MessageFlags::EPHEMERAL)
                     .exec()
@@ -263,14 +260,19 @@ impl InteractionHandler for MatchmakingCommandHandler {
                 return Ok(());
             }
             "done" => {
-                if let Some((id, _s)) = self.sessions.remove(&data.command.channel_id) {
+                if let Some((id, _s)) = self.sessions.remove(
+                    &data
+                        .interaction
+                        .channel_id
+                        .ok_or_else(|| anyhow!("command was not run in a channel"))?,
+                ) {
                     // TODO: Validate that the user is a part of the session.
 
                     match self
                         .utils
                         .http_client
                         .interaction(self.utils.application_id)
-                        .create_followup(data.command.token.as_str())
+                        .create_followup(data.interaction.token.as_str())
                         .content("Closing the session soon. Thanks for using runback!")?
                         .exec()
                         .await
@@ -310,7 +312,7 @@ impl InteractionHandler for MatchmakingCommandHandler {
 
     async fn process_component(&self, data: Box<MessageComponentData>) -> anyhow::Result<()> {
         let member = data
-            .message
+            .interaction
             .member
             .ok_or_else(|| anyhow!("command cannot be run in a DM"))?;
 
@@ -322,7 +324,13 @@ impl InteractionHandler for MatchmakingCommandHandler {
             "accept" => {
                 let invitation = self
                     .invitations
-                    .get(&data.message.message.id)
+                    .get(
+                        &data
+                            .interaction
+                            .message
+                            .ok_or_else(|| anyhow!("interaction not run on a message component"))?
+                            .id,
+                    )
                     .ok_or_else(|| anyhow!("no invitation found"))?;
 
                 if let Some(invited) = invitation.invited {
@@ -331,8 +339,8 @@ impl InteractionHandler for MatchmakingCommandHandler {
                             .http_client
                             .interaction(self.utils.application_id)
                             .create_response(
-                                data.message.id,
-                                data.message.token.as_str(),
+                                data.interaction.id,
+                                data.interaction.token.as_str(),
                                 &InteractionResponse {
                                     kind: InteractionResponseType::ChannelMessageWithSource,
                                     data: Some(
@@ -359,7 +367,7 @@ impl InteractionHandler for MatchmakingCommandHandler {
                 };
 
                 let guild_id = data
-                    .message
+                    .interaction
                     .guild_id
                     .ok_or_else(|| anyhow!("Command cannot be run in a DM"))?;
 
@@ -431,7 +439,11 @@ impl InteractionHandler for MatchmakingCommandHandler {
             }
             "deny" => {
                 // validate users
-                if !self.invitations.contains_key(&data.message.message.id) {
+                let msg = data
+                    .interaction
+                    .message
+                    .ok_or_else(|| anyhow!("interaction not run on a message component"))?;
+                if !self.invitations.contains_key(&msg.id) {
                     return Err(anyhow!("could not find that match invitation"));
                 }
 
@@ -440,7 +452,7 @@ impl InteractionHandler for MatchmakingCommandHandler {
                     .utils
                     .http_client
                     .guild(
-                        data.message
+                        data.interaction
                             .guild_id
                             .ok_or_else(|| anyhow!("you cannot use this command in a dm"))?,
                     )
@@ -460,7 +472,7 @@ impl InteractionHandler for MatchmakingCommandHandler {
                 // cancel invitation
                 let (_key, invitation) = self
                     .invitations
-                    .remove_if(&data.message.message.id, |_key, invitation| {
+                    .remove_if(&msg.id, |_key, invitation| {
                         if !is_admin && !invitation.is_participating(user.id) {
                             return false;
                         }
@@ -479,7 +491,7 @@ impl InteractionHandler for MatchmakingCommandHandler {
                     self.utils
                         .http_client
                         .interaction(self.utils.application_id)
-                        .create_response(data.message.id, data.message.token.as_str(),
+                        .create_response(data.interaction.id, data.interaction.token.as_str(),
                         &InteractionResponse { kind: InteractionResponseType::ChannelMessageWithSource, data: Some(
                             InteractionResponseDataBuilder::new()
                         .flags(MessageFlags::EPHEMERAL)
@@ -508,8 +520,8 @@ impl InteractionHandler for MatchmakingCommandHandler {
                     .http_client
                     .interaction(self.utils.application_id)
                     .create_response(
-                        data.message.id,
-                        data.message.token.as_str(),
+                        data.interaction.id,
+                        data.interaction.token.as_str(),
                         &InteractionResponse {
                             kind: InteractionResponseType::ChannelMessageWithSource,
                             data: Some(
@@ -531,15 +543,17 @@ impl InteractionHandler for MatchmakingCommandHandler {
 }
 
 impl MatchmakingCommandHandler {
-    pub fn new(utils: Arc<ApplicationCommandUtilities>) -> Self {
+    pub fn new(utils: Arc<CommonUtilities>) -> Self {
         // TODO: Start a thread to keep track of the matchmaking instances.
         let sessions = Arc::new(DashMap::with_shard_amount(4));
         let invitations = Arc::new(DashMap::with_shard_amount(4));
-        let background_task = tokio::task::spawn(Self::background_loop(
-            sessions.clone(),
-            utils.clone(),
-            invitations.clone(),
-        ));
+        let utils_bg = utils.clone();
+        let background_task = tokio::task::spawn(async move {
+            let bg = BackgroundLoop::new(utils_bg);
+            loop {
+                bg.update().await?;
+            }
+        });
 
         Self {
             utils,
@@ -552,7 +566,7 @@ impl MatchmakingCommandHandler {
     #[instrument(skip_all)]
     async fn background_loop(
         sessions: Arc<DashMap<Id<ChannelMarker>, Session>>,
-        utils: Arc<ApplicationCommandUtilities>,
+        utils: Arc<CommonUtilities>,
         _interactions: Arc<DashMap<Id<MessageMarker>, MatchInvitation>>,
     ) {
         let mut stream = {
@@ -610,7 +624,7 @@ impl MatchmakingCommandHandler {
 
     async fn timeout_matchmaking_session(
         thread: Id<ChannelMarker>,
-        utils: &ApplicationCommandUtilities,
+        utils: &CommonUtilities,
     ) -> anyhow::Result<()> {
         // TODO: Send a message, declaring the timeout of the session.
 
@@ -788,5 +802,141 @@ impl MatchmakingCommandHandler {
             .await?;
 
         Ok(msg)
+    }
+}
+
+struct BackgroundLoop {
+    utils: Arc<CommonUtilities>,
+}
+
+impl BackgroundLoop {
+    fn new(utils: Arc<CommonUtilities>) -> Self {
+        Self {
+            utils: utils.clone(),
+        }
+    }
+
+    /// Queries and updates the sessions and invitations.
+    async fn update(&self) -> Result<(), anyhow::Error> {
+        let expired = self.get_expired_sessions().await?;
+
+        for s in expired {
+            // Send an expiration message, archive the thread, and end the session.
+            let chan_id = s.channel_id.into_id();
+            let chan = self
+                .utils
+                .http_client
+                .channel(chan_id)
+                .exec()
+                .await?
+                .model()
+                .await?;
+            let msg = self
+                .utils
+                .http_client
+                .create_message(chan.id)
+                .content("This matchmaking session has timed out. See ya later!")?
+                .exec()
+                .await?
+                .model()
+                .await?;
+            if chan.kind.is_thread() {
+                let thread = self
+                    .utils
+                    .http_client
+                    .update_thread(chan_id)
+                    .archived(true)
+                    .exec()
+                    .await?
+                    .model()
+                    .await?;
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn get_expired_sessions(
+        &self,
+    ) -> Result<Vec<entity::matchmaking_lobbies::Model>, anyhow::Error> {
+        let sessions = entity::matchmaking_lobbies::Entity::find()
+            .filter(entity::matchmaking_lobbies::Column::TimeoutAfter.lte(Utc::now()))
+            .all(self.utils.db_ref())
+            .await?;
+
+        Ok(sessions)
+    }
+
+    async fn send_pre_expiration_messages(&self) {}
+
+    #[instrument(skip_all)]
+    async fn background_loop(
+        &self,
+        sessions: Arc<DashMap<Id<ChannelMarker>, Session>>,
+        utils: Arc<CommonUtilities>,
+        _interactions: Arc<DashMap<Id<MessageMarker>, MatchInvitation>>,
+    ) {
+        let mut stream = {
+            let s = sessions.clone();
+            utils
+                .standby
+                .wait_for_event_stream(move |e: &Event| match e {
+                    Event::ChannelDelete(chan) => s.contains_key(&chan.id),
+                    _ => false,
+                })
+        };
+
+        let mut interval = tokio::time::interval(Duration::from_secs(30));
+
+        let mut thread_ids_to_remove = Vec::new();
+
+        loop {
+            tokio::select! {
+                _ = interval.tick() => {
+                    let start = Instant::now();
+                    let s_count = sessions.len();
+                    debug!(num_sessions = ?s_count, "Filtering sessions");
+
+                    let now = Utc::now();
+
+                    sessions.retain(|_key, val: &mut Session| {
+                        let res = val.timeout_after > now;
+                        if !res {
+                            thread_ids_to_remove.push(val.thread);
+                        }
+                        res
+                    });
+
+                    debug!(time_ms = ?start.elapsed(), "Found all bad sessions");
+
+                    for thread in &thread_ids_to_remove {
+                        let fut = Self::timeout_matchmaking_session(*thread, utils.as_ref());
+                        // TODO: Store this in a FuturesUnordered and send any errors back to the parent struct (Prob best to do through a channel)
+                        if let Err(e) = fut.await {
+                            error!(error = ?e, "Failure to delete thread");
+                        }
+                    }
+
+                    thread_ids_to_remove.clear();
+
+                    let end = start.elapsed();
+                    debug!(end = ?end, time_ms = ?end.as_millis(), sessions_removed = ?s_count - sessions.len(), "Finished filtering sessions");
+                }
+                chan_delete = stream.next() => {
+                    debug!(del = ?format!("{:?}", chan_delete), "Channel was deleted");
+                }
+            }
+        }
+    }
+
+    async fn timeout_matchmaking_session(
+        thread: Id<ChannelMarker>,
+        utils: &CommonUtilities,
+    ) -> anyhow::Result<()> {
+        // TODO: Send a message, declaring the timeout of the session.
+
+        utils.http_client.delete_channel(thread).exec().await?;
+
+        Ok(())
     }
 }

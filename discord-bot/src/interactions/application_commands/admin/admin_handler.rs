@@ -10,7 +10,7 @@ use crate::interactions::application_commands::{
     ApplicationCommandData, CommandGroupDescriptor, InteractionHandler, MessageComponentData,
 };
 
-use crate::interactions::application_commands::ApplicationCommandUtilities;
+use crate::interactions::application_commands::CommonUtilities;
 
 use super::mm_settings_handler::MatchmakingSettingsHandler;
 
@@ -24,8 +24,8 @@ pub struct AdminCommandHandler {
 impl InteractionHandler for AdminCommandHandler {
     fn describe(&self) -> CommandGroupDescriptor {
         let builder = CommandBuilder::new(
-            "admin".into(),
-            "Admin configuration and management settings".into(),
+            "admin",
+            "Admin configuration and management settings",
             CommandType::ChatInput,
         )
         // .option(SubCommandBuilder::new(
@@ -34,24 +34,22 @@ impl InteractionHandler for AdminCommandHandler {
         // ))
         .option(
             SubCommandGroupBuilder::new(
-                "matchmaking-settings".into(),
-                "Shows the matchmaking settings panel".into(),
+                "matchmaking-settings",
+                "Shows the matchmaking settings panel",
             )
             .subcommands([
+                SubCommandBuilder::new("admin-role", "Set which users can act as admins").option(
+                    CommandOption::Role(BaseCommandOptionData {
+                        name: "role".to_string(),
+                        description: "The admin role (to disable, set to empty)".to_string(),
+                        description_localizations: None,
+                        name_localizations: None,
+                        required: false,
+                    }),
+                ),
                 SubCommandBuilder::new(
-                    "admin-role".to_string(),
-                    "Set which users can act as admins".to_string(),
-                )
-                .option(CommandOption::Role(BaseCommandOptionData {
-                    name: "role".to_string(),
-                    description: "The admin role (to disable, set to empty)".to_string(),
-                    description_localizations: None,
-                    name_localizations: None,
-                    required: false,
-                })),
-                SubCommandBuilder::new(
-                    "matchmaking-channel".to_string(),
-                    "Set the default matchmaking channel".to_string(),
+                    "matchmaking-channel",
+                    "Set the default matchmaking channel",
                 )
                 .option(CommandOption::Channel(ChannelCommandOptionData {
                     name: "channel".to_string(),
@@ -73,7 +71,7 @@ impl InteractionHandler for AdminCommandHandler {
     }
 
     async fn process_command(&self, data: Box<ApplicationCommandData>) -> anyhow::Result<()> {
-        let options = &data.command.data.options;
+        let options = &data.command.options;
 
         if options.len() != 1 {
             return Err(anyhow!("Expected extra options when calling the top-level admin command handler. Number of arguments found: {}", options.len()));
@@ -146,7 +144,7 @@ impl InteractionHandler for AdminCommandHandler {
 }
 
 impl AdminCommandHandler {
-    pub fn new(utils: Arc<ApplicationCommandUtilities>) -> Self {
+    pub fn new(utils: Arc<CommonUtilities>) -> Self {
         Self {
             matchmaking_settings_handler: MatchmakingSettingsHandler::new(utils),
             // matchmaking_panels_handler: MatchmakingPanelsHandler::new(utils.clone()),

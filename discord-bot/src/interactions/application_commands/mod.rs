@@ -7,7 +7,7 @@ pub mod lfg {}
 pub mod matchmaking;
 pub mod utils;
 
-pub use utils::ApplicationCommandUtilities;
+pub use utils::CommonUtilities;
 
 use std::sync::Arc;
 
@@ -15,7 +15,10 @@ use sea_orm::prelude::*;
 use twilight_model::{
     application::{
         command::{Command, CommandType},
-        interaction::MessageComponentInteraction,
+        interaction::{
+            application_command::CommandData, message_component::MessageComponentInteractionData,
+            Interaction,
+        },
     },
     channel::message::MessageFlags,
     http::interaction::{InteractionResponse, InteractionResponseType},
@@ -23,8 +26,6 @@ use twilight_model::{
 use twilight_util::builder::command::{CommandBuilder, StringBuilder};
 use twilight_util::builder::embed::{EmbedBuilder, EmbedFieldBuilder};
 use twilight_util::builder::InteractionResponseDataBuilder;
-
-use twilight_model::application::interaction::ApplicationCommand;
 
 /// Describes a group of commands. This is mainly used
 /// for structural purposes, and for the `/help` command
@@ -49,14 +50,16 @@ pub trait InteractionHandler {
 
 #[derive(Debug)]
 pub struct ApplicationCommandData {
-    pub command: ApplicationCommand,
+    pub interaction: Interaction,
+    pub command: CommandData,
     pub id: Uuid,
     // pub cancellation_token
 }
 
 #[derive(Debug)]
 pub struct MessageComponentData {
-    pub message: MessageComponentInteraction,
+    pub interaction: Interaction,
+    pub message: MessageComponentInteractionData,
     pub action: String,
     pub id: Uuid,
     // pub cancellation_token
@@ -64,21 +67,16 @@ pub struct MessageComponentData {
 
 #[derive(Debug)]
 pub struct PingCommandHandler {
-    pub utils: Arc<ApplicationCommandUtilities>,
+    pub utils: Arc<CommonUtilities>,
 }
 
 #[async_trait]
 impl InteractionHandler for PingCommandHandler {
     fn describe(&self) -> CommandGroupDescriptor {
-        let builder = CommandBuilder::new(
-            "ping".to_string(),
-            "Responds with pong".into(),
-            CommandType::ChatInput,
-        )
-        .option(StringBuilder::new(
-            "text".into(),
-            "Send this text alongside the response".into(),
-        ));
+        let builder =
+            CommandBuilder::new("ping", "Responds with pong", CommandType::ChatInput).option(
+                StringBuilder::new("text", "Send this text alongside the response"),
+            );
 
         let command = builder.build();
         debug!(command = %format!("{:?}", command), "Created command");
@@ -113,7 +111,11 @@ impl InteractionHandler for PingCommandHandler {
             .utils
             .http_client
             .interaction(self.utils.application_id)
-            .create_response(data.command.id, data.command.token.as_str(), &message)
+            .create_response(
+                data.interaction.id,
+                data.interaction.token.as_str(),
+                &message,
+            )
             .exec()
             .await?;
 
