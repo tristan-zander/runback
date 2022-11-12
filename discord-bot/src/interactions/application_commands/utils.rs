@@ -9,7 +9,7 @@ use twilight_model::{
         marker::{ApplicationMarker, GuildMarker, UserMarker},
         Id,
     },
-    user::User,
+    user::{CurrentUser, User},
 };
 
 use twilight_http::{client::ClientBuilder, Client as DiscordHttpClient};
@@ -23,6 +23,7 @@ use std::sync::Arc;
 pub struct CommonUtilities {
     pub http_client: DiscordHttpClient,
     pub application_id: Id<ApplicationMarker>,
+    pub current_user: CurrentUser,
     pub db: Arc<Box<DatabaseConnection>>,
     pub cache: Arc<InMemoryCache>,
     pub standby: Arc<Standby>,
@@ -43,17 +44,21 @@ impl CommonUtilities {
             response.model().await?.id
         };
 
-        Ok(Self::new_with_application_id(
+        let current_user = http_client.current_user().exec().await?.model().await?;
+
+        Ok(Self::new_with_fields(
             db,
             application_id,
+            current_user,
             cache,
             standby,
         ))
     }
 
-    pub fn new_with_application_id(
+    pub fn new_with_fields(
         db: Arc<Box<DatabaseConnection>>,
         application_id: Id<ApplicationMarker>,
+        current_user: CurrentUser,
         cache: Arc<InMemoryCache>,
         standby: Arc<Standby>,
     ) -> Self {
@@ -65,6 +70,7 @@ impl CommonUtilities {
             application_id,
             cache,
             standby,
+            current_user,
         }
     }
 

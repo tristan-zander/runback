@@ -890,7 +890,10 @@ impl BackgroundLoop {
             // If it was, then extend the expiration time by a half hour.
             // Otherwise, send the expiration warning.
 
-            if last_message_sent_at > (now - chrono::Duration::minutes(30)) {
+            // TODO: Check last updated time
+            if last_message_sent_at > (now - chrono::Duration::minutes(30))
+                && msg.author.id != self.utils.current_user.id
+            {
                 return Ok(true);
             }
         }
