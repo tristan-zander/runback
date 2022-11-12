@@ -14,6 +14,7 @@ pub struct Model {
     pub id: Uuid,
     pub started_at: DateTimeUtc,
     pub timeout_after: DateTimeUtc,
+    pub ended_at: Option<DateTimeUtc>,
     pub channel_id: IdWrapper<ChannelMarker>,
     pub description: Option<String>,
     pub owner: Uuid,

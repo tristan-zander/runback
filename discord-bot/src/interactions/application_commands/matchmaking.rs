@@ -1,7 +1,6 @@
 use bot::entity::{self, prelude::*, IdWrapper};
-use chrono::{format::Fixed, DateTime, FixedOffset, Offset, Utc};
-use dashmap::DashMap;
-use sea_orm::{prelude::*, IntoActiveModel, QuerySelect, Set};
+use chrono::{DateTime, FixedOffset, Utc};
+use sea_orm::{prelude::*, IntoActiveModel, Set};
 use tokio::task::JoinHandle;
 use twilight_gateway::Event;
 use twilight_model::{
@@ -91,7 +90,7 @@ impl InteractionHandler for MatchmakingCommandHandler {
         //     )
         //     .build(),
         // )
-        .option(SubCommandBuilder::new("done", "Finish your matchmaking session").build())
+        .option(SubCommandBuilder::new("done", "Finish your matchmaking lobby").build())
         .option(SubCommandBuilder::new("report-score", "Report the score of a match").build());
 
         let command = builder.build();
@@ -250,20 +249,20 @@ impl InteractionHandler for MatchmakingCommandHandler {
                     .await?;
 
                 if let Some(lobby) = lobby {
-                    // TODO: Validate that the user is a part of the session.
+                    // TODO: Validate that the user is a part of the lobby.
 
                     match self
                         .utils
                         .http_client
                         .interaction(self.utils.application_id)
                         .create_followup(data.interaction.token.as_str())
-                        .content("Closing the session soon. Thanks for using runback!")?
+                        .content("Closing the lobby soon. Thanks for using runback!")?
                         .exec()
                         .await
                     {
                         Ok(_) => tokio::time::sleep(Duration::from_secs(3)).await,
                         Err(e) => {
-                            error!(error = ?e, "closing matchmaking channel success message failed to sendd")
+                            error!(error = ?e, "closing matchmaking channel success message failed to send")
                         }
                     }
 
@@ -278,7 +277,7 @@ impl InteractionHandler for MatchmakingCommandHandler {
 
                     MatchmakingLobbies::update(matchmaking_lobbies::ActiveModel {
                         id: Set(lobby.id),
-                        timeout_after: Set(Utc::now()),
+                        ended_at: Set(Some(Utc::now())),
                         ..Default::default()
                     })
                     .filter(matchmaking_lobbies::Column::TimeoutAfter.gte(Utc::now()))
@@ -446,6 +445,7 @@ impl InteractionHandler for MatchmakingCommandHandler {
                     privacy: LobbyPrivacy::Open,
                     game: None,
                     game_other: None,
+                    ended_at: None,
                 };
 
                 for user in users {
@@ -505,8 +505,9 @@ impl InteractionHandler for MatchmakingCommandHandler {
                 let user_model = self.utils.find_or_create_user(user.id).await?;
 
                 // cancel invitation
-                if user_model.user_id != invitation.extended_to
-                    && user_model.user_id != invitation.invited_by
+                if (user_model.user_id != invitation.extended_to
+                    && user_model.user_id != invitation.invited_by)
+                    || is_admin
                 {
                     return Err(anyhow!("not authorized to deny that invitation"));
                 }
@@ -567,6 +568,14 @@ impl InteractionHandler for MatchmakingCommandHandler {
                     )
                     .exec()
                     .await?;
+
+                MatchmakingInvitation::update(matchmaking_invitation::ActiveModel {
+                    id: Set(invitation.id),
+                    expires_at: Set(Utc::now()), // TODO: Set the invitation as "Denied"
+                    ..Default::default()
+                })
+                .exec(self.utils.db_ref())
+                .await?;
 
                 Ok(())
             }
@@ -795,21 +804,21 @@ impl BackgroundLoop {
         // TODO: Aggregate errors
 
         // Timeout expired sessions
-        let expired = self.get_expired_sessions().await?;
+        let expired = self.get_expired_lobbies().await?;
         for s in &expired {
             // Send an expiration message, archive the thread, and end the session.
-            if self.check_if_session_should_be_extended(s).await? {
-                self.extend_session(s).await?;
+            if self.check_if_lobby_should_be_extended(s).await? {
+                self.extend_lobby(s).await?;
                 continue;
             }
-            self.timeout_expired_session(s).await?;
+            self.timeout_expired_lobby(s).await?;
         }
 
         // Send pre-expiration warning messages
-        let almost_expired = self.get_expiring_sessions().await?;
+        let almost_expired = self.get_expiring_lobbies().await?;
         for s in &almost_expired {
-            if self.check_if_session_should_be_extended(s).await? {
-                self.extend_session(s).await?;
+            if self.check_if_lobby_should_be_extended(s).await? {
+                self.extend_lobby(s).await?;
                 continue;
             }
             self.send_expiration_warning_message(s).await?;
@@ -819,36 +828,36 @@ impl BackgroundLoop {
     }
 
     #[instrument(skip_all)]
-    async fn get_expiring_sessions(
-        &self,
-    ) -> Result<Vec<entity::matchmaking_lobbies::Model>, anyhow::Error> {
-        let sessions = entity::matchmaking_lobbies::Entity::find()
+    async fn get_expiring_lobbies(&self) -> Result<Vec<matchmaking_lobbies::Model>, anyhow::Error> {
+        let lobbies = MatchmakingLobbies::find()
             .filter(
-                entity::matchmaking_lobbies::Column::TimeoutAfter
+                matchmaking_lobbies::Column::TimeoutAfter
                     // Get all sessions expiring in 15 minutes
                     .lte(Utc::now().add(chrono::Duration::minutes(15))),
             )
+            .filter(matchmaking_lobbies::Column::EndedAt.is_null())
             .all(self.utils.db_ref())
             .await?;
 
-        Ok(sessions)
+        Ok(lobbies)
     }
 
-    async fn extend_session(&self, s: &matchmaking_lobbies::Model) -> anyhow::Result<()> {
+    async fn extend_lobby(&self, s: &matchmaking_lobbies::Model) -> anyhow::Result<()> {
         let lobby = matchmaking_lobbies::ActiveModel {
             id: Set(s.id),
             timeout_after: Set(Utc::now() + chrono::Duration::minutes(30)),
             ..Default::default()
         };
+        debug!(lobby = ?lobby.id, "extending lobby session");
 
-        matchmaking_lobbies::Entity::update(lobby)
+        MatchmakingLobbies::update(lobby)
             .exec(self.utils.db_ref())
             .await?;
 
         Ok(())
     }
 
-    async fn check_if_session_should_be_extended(
+    async fn check_if_lobby_should_be_extended(
         &self,
         s: &matchmaking_lobbies::Model,
     ) -> anyhow::Result<bool> {
@@ -897,14 +906,14 @@ impl BackgroundLoop {
             .utils
             .http_client
             .create_message(s.channel_id.into_id())
-            .content("This session will close in 15 minutes due to inactivity. Please click \"Extend\" or type in chat to extend the session.")?
+            .content("This lobby will close in 15 minutes due to inactivity. Please click \"Extend\" or type in chat to extend the lobby.")?
             .components(&[
                 Component::ActionRow(
                     ActionRow {
                         components: vec![
                             Component::Button(
                                 Button {
-                                    custom_id: Some("matchmaking:extend_session".to_string()),
+                                    custom_id: Some("matchmaking:extend_lobby".to_string()),
                                     disabled: false,
                                     emoji: None,
                                     label: Some("Extend".to_string()),
@@ -935,7 +944,7 @@ impl BackgroundLoop {
     }
 
     #[instrument(skip_all)]
-    async fn timeout_expired_session(
+    async fn timeout_expired_lobby(
         &self,
         s: &entity::matchmaking_lobbies::Model,
     ) -> anyhow::Result<()> {
@@ -952,7 +961,7 @@ impl BackgroundLoop {
             .utils
             .http_client
             .create_message(chan.id)
-            .content("This matchmaking session has timed out. See ya later!")?
+            .content("This matchmaking lobby has timed out. See ya later!")?
             .exec()
             .await?;
         if chan.kind.is_thread() {
@@ -987,15 +996,14 @@ impl BackgroundLoop {
         Ok(())
     }
 
-    async fn get_expired_sessions(
-        &self,
-    ) -> Result<Vec<entity::matchmaking_lobbies::Model>, anyhow::Error> {
-        let sessions = entity::matchmaking_lobbies::Entity::find()
-            .filter(entity::matchmaking_lobbies::Column::TimeoutAfter.lte(Utc::now()))
+    async fn get_expired_lobbies(&self) -> Result<Vec<matchmaking_lobbies::Model>, anyhow::Error> {
+        let lobbies = MatchmakingLobbies::find()
+            .filter(matchmaking_lobbies::Column::TimeoutAfter.lte(Utc::now()))
+            .filter(matchmaking_lobbies::Column::EndedAt.is_null())
             .all(self.utils.db_ref())
             .await?;
 
-        Ok(sessions)
+        Ok(lobbies)
     }
 
     /// This function should only return catestrophic errors!
@@ -1016,19 +1024,17 @@ impl BackgroundLoop {
             tokio::select! {
                 _ = interval.tick() => {
                     let start = Instant::now();
-                    debug!("Filtering sessions");
-
-                    let now = Utc::now();
+                    debug!("Filtering lobbies");
 
                     if let Err(e) = self.update().await {
-                        error!(error = ?e, "Encountered errors while updating sessions.");
+                        error!(error = ?e, "Encountered errors while updating lobbies.");
                     }
 
                     let end = start.elapsed();
-                    debug!(end = ?end, time_ms = ?end.as_millis(), "Finished filtering sessions");
+                    debug!(end = ?end, time_ms = ?end.as_millis(), "Finished filtering lobbies");
                 }
                 Some(chan_delete) = stream.next() => {
-                    debug!(del = ?format!("{:?}", chan_delete), "Channel was deleted. Remove any sessions attached to this channel.");
+                    debug!(del = ?format!("{:?}", chan_delete), "Channel was deleted. Remove any lobbies attached to this channel.");
                     if let Event::ChannelDelete(chan) = chan_delete {
                         if let Err(e) = self.on_channel_delete(chan).await {
                             error!(error = ?e, "encountered error when dealing with deleted channel");

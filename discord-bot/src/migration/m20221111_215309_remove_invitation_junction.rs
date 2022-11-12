@@ -20,6 +20,18 @@ impl MigrationTrait for Migration {
         manager
             .alter_table(
                 Table::alter()
+                    .table(MatchmakingLobbies)
+                    .add_column_if_not_exists(
+                        ColumnDef::new(matchmaking_lobbies::Column::EndedAt)
+                            .timestamp_with_time_zone(),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .alter_table(
+                Table::alter()
                     .table(MatchmakingInvitation)
                     .add_column_if_not_exists(
                         ColumnDef::new(matchmaking_invitation::Column::Lobby).uuid(),
@@ -127,6 +139,15 @@ impl MigrationTrait for Migration {
                     .drop_column(matchmaking_invitation::Column::Lobby)
                     .drop_column(matchmaking_invitation::Column::ExtendedTo)
                     .drop_column(matchmaking_invitation::Column::ExpiresAt)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(MatchmakingLobbies)
+                    .drop_column(matchmaking_lobbies::Column::EndedAt)
                     .to_owned(),
             )
             .await?;
