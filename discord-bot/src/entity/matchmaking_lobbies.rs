@@ -46,7 +46,7 @@ pub enum Relation {
         on_update = "Cascade",
         on_delete = "NoAction"
     )]
-    Invitations
+    Invitations,
 }
 
 impl Related<super::game::Entity> for Entity {
