@@ -905,6 +905,38 @@ impl BackgroundLoop {
         &self,
         s: &matchmaking_lobbies::Model,
     ) -> anyhow::Result<()> {
+        let should_send_message = {
+            let mut should_send_message = true;
+            let chan = self
+                .utils
+                .http_client
+                .channel(s.channel_id.into_id())
+                .exec()
+                .await?
+                .model()
+                .await?;
+
+            if let Some(msg) = chan.last_message_id {
+                let msg = self
+                    .utils
+                    .http_client
+                    .message(chan.id, msg.cast())
+                    .exec()
+                    .await?
+                    .model()
+                    .await?;
+
+                if msg.author.id == self.utils.current_user.id {
+                    should_send_message = false;
+                }
+            }
+            should_send_message
+        };
+
+        if !should_send_message {
+            return Ok(());
+        }
+
         let _msg = self
             .utils
             .http_client
@@ -971,22 +1003,20 @@ impl BackgroundLoop {
             let _thread = self
                 .utils
                 .http_client
-                .update_thread(chan_id)
+                .update_thread(chan.id)
                 .archived(true)
+                .locked(true)
                 .exec()
                 .await?;
         }
 
         // Close any matchmaking invitations.
-        self.deactivate_invitations_upon_closing_lobby(s).await?;
+        self.close_lobby(s).await?;
 
         Ok(())
     }
 
-    async fn deactivate_invitations_upon_closing_lobby(
-        &self,
-        lobby: &matchmaking_lobbies::Model,
-    ) -> anyhow::Result<()> {
+    async fn close_lobby(&self, lobby: &matchmaking_lobbies::Model) -> anyhow::Result<()> {
         let _update_res = entity::matchmaking_invitation::Entity::update_many()
             .filter(matchmaking_invitation::Column::Lobby.eq(lobby.id))
             .filter(matchmaking_invitation::Column::ExpiresAt.gt(Utc::now()))
@@ -996,6 +1026,14 @@ impl BackgroundLoop {
             })
             .exec(self.utils.db_ref())
             .await?;
+
+        let _update_res = MatchmakingLobbies::update(matchmaking_lobbies::ActiveModel {
+            id: Set(lobby.id),
+            ended_at: Set(Some(Utc::now())),
+            ..Default::default()
+        })
+        .exec(self.utils.db_ref())
+        .await?;
         Ok(())
     }
 
@@ -1057,8 +1095,7 @@ impl BackgroundLoop {
 
         if let Some(lobby) = lobby {
             // Delete the lobby and de-activate all invitations.
-            self.deactivate_invitations_upon_closing_lobby(&lobby)
-                .await?;
+            self.close_lobby(&lobby).await?;
         }
 
         Ok(())
