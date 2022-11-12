@@ -1,7 +1,7 @@
-use bot::entity::{self, matchmaking_invitation, matchmaking_lobbies, IdWrapper};
+use bot::entity::{self, prelude::*, IdWrapper};
 use chrono::{format::Fixed, DateTime, FixedOffset, Offset, Utc};
 use dashmap::DashMap;
-use sea_orm::{prelude::*, IntoActiveModel, Set};
+use sea_orm::{prelude::*, IntoActiveModel, QuerySelect, Set};
 use tokio::task::JoinHandle;
 use twilight_gateway::Event;
 use twilight_model::{
@@ -42,40 +42,8 @@ use std::{
     time::{Duration, Instant},
 };
 
-// 3 hours
-static TIMEOUT_AFTER: Duration = Duration::from_secs(60 * 60 * 3);
-
-// TODO: Don't use a model like this. Use the sea_orm model that's stored in the database
-#[derive(Debug, Clone)]
-struct Session {
-    pub id: Uuid,
-    pub users: Vec<Id<UserMarker>>,
-    pub thread: Id<ChannelMarker>,
-    pub started_at: DateTimeUtc,
-    pub timeout_after: DateTimeUtc,
-}
-
-#[derive(Debug, Clone)]
-struct MatchInvitation {
-    pub id: Uuid,
-    /// The user that created the invitation
-    pub author: Id<UserMarker>,
-    pub invited: Option<Id<UserMarker>>,
-    pub message_id: Id<MessageMarker>,
-    pub channel_id: Id<ChannelMarker>,
-    pub timeout_after: DateTimeUtc,
-}
-
-impl MatchInvitation {
-    pub fn is_participating(&self, user: Id<UserMarker>) -> bool {
-        user == self.author || self.invited.map_or_else(|| false, |i| i == user)
-    }
-}
-
 pub struct MatchmakingCommandHandler {
     utils: Arc<CommonUtilities>,
-    sessions: Arc<DashMap<Id<ChannelMarker>, Session>>,
-    invitations: Arc<DashMap<Id<MessageMarker>, MatchInvitation>>,
     _background_task: JoinHandle<()>,
 }
 
@@ -115,13 +83,14 @@ impl InteractionHandler for MatchmakingCommandHandler {
         //     SubCommandBuilder::new("show-matches".into(), "Show the matchmaking menu".into())
         //         .build(),
         // )
-        .option(
-            SubCommandBuilder::new(
-                "settings",
-                "View and update settings such as default character",
-            )
-            .build(),
-        )
+        //
+        // .option(
+        //     SubCommandBuilder::new(
+        //         "settings", // Deprecating this in favor of `/admin` commands
+        //         "View and update settings such as default character",
+        //     )
+        //     .build(),
+        // )
         .option(SubCommandBuilder::new("done", "Finish your matchmaking session").build())
         .option(SubCommandBuilder::new("report-score", "Report the score of a match").build());
 
@@ -246,27 +215,41 @@ impl InteractionHandler for MatchmakingCommandHandler {
                     .model()
                     .await?;
 
-                self.invitations.insert(
-                    msg.id,
-                    MatchInvitation {
-                        id: Uuid::new_v4(),
-                        author: user.id,
-                        invited: Some(invited.id),
-                        message_id: msg.id,
-                        timeout_after: Utc::now() + chrono::Duration::minutes(15),
-                        channel_id: msg.channel_id,
-                    },
-                );
+                let author = self.utils.find_or_create_user(user.id).await?;
+                let invited = self.utils.find_or_create_user(invited.id).await?;
+
+                let invitation = matchmaking_invitation::Model {
+                    id: Uuid::new_v4(),
+                    lobby: None,
+                    extended_to: invited.user_id,
+                    invited_by: author.user_id,
+                    game: None,
+                    description: None,
+                    message_id: Some(msg.id.into()),
+                    expires_at: Utc::now() + chrono::Duration::minutes(30),
+                    channel_id: channel.into(),
+                };
+
+                debug!(invitation = ?format!("{:?}", invitation));
+
+                MatchmakingInvitation::insert(invitation.into_active_model())
+                    .exec(self.utils.db_ref())
+                    .await?;
 
                 return Ok(());
             }
             "done" => {
-                if let Some((id, _s)) = self.sessions.remove(
-                    &data
-                        .interaction
-                        .channel_id
-                        .ok_or_else(|| anyhow!("command was not run in a channel"))?,
-                ) {
+                let chan_id = data
+                    .interaction
+                    .channel_id
+                    .ok_or_else(|| anyhow!("command was not run in a channel"))?;
+
+                let lobby = MatchmakingLobbies::find()
+                    .filter(matchmaking_lobbies::Column::ChannelId.eq(IdWrapper::from(chan_id)))
+                    .one(self.utils.db_ref())
+                    .await?;
+
+                if let Some(lobby) = lobby {
                     // TODO: Validate that the user is a part of the session.
 
                     match self
@@ -283,14 +266,24 @@ impl InteractionHandler for MatchmakingCommandHandler {
                             error!(error = ?e, "closing matchmaking channel success message failed to sendd")
                         }
                     }
+
                     // self.utils.http_client.delete_channel(id).exec().await?;
                     self.utils
                         .http_client
-                        .update_thread(id)
+                        .update_thread(chan_id)
                         .archived(true)
                         .locked(true)
                         .exec()
                         .await?;
+
+                    MatchmakingLobbies::update(matchmaking_lobbies::ActiveModel {
+                        id: Set(lobby.id),
+                        timeout_after: Set(Utc::now()),
+                        ..Default::default()
+                    })
+                    .filter(matchmaking_lobbies::Column::TimeoutAfter.gte(Utc::now()))
+                    .exec(self.utils.db_ref())
+                    .await?;
                 } else {
                     return Err(anyhow!(
                         "You must run this command in a valid matchmaking thread."
@@ -321,78 +314,99 @@ impl InteractionHandler for MatchmakingCommandHandler {
             .user
             .ok_or_else(|| anyhow!("could not get user data for caller"))?;
 
+        let guild_id = data
+            .interaction
+            .guild_id
+            .ok_or_else(|| anyhow!("Command cannot be run in a DM"))?;
+
         match data.action.as_str() {
             "accept" => {
-                let invitation = self
-                    .invitations
-                    .get(
-                        &data
-                            .interaction
-                            .message
-                            .ok_or_else(|| anyhow!("interaction not run on a message component"))?
-                            .id,
-                    )
-                    .ok_or_else(|| anyhow!("no invitation found"))?;
+                let chan_id = data
+                    .interaction
+                    .channel_id
+                    .ok_or_else(|| anyhow!("could not get channel of message component"))?;
+                let msg_id = data
+                    .interaction
+                    .message
+                    .ok_or_else(|| anyhow!("interaction not run on a message component"))?
+                    .id;
 
-                if let Some(invited) = invitation.invited {
-                    if invited != user.id {
-                        self.utils
-                            .http_client
-                            .interaction(self.utils.application_id)
-                            .create_response(
-                                data.interaction.id,
-                                data.interaction.token.as_str(),
-                                &InteractionResponse {
-                                    kind: InteractionResponseType::ChannelMessageWithSource,
-                                    data: Some(
-                                        InteractionResponseDataBuilder::new()
-                                            .content(
-                                                "You were not invited to this match.".to_string(),
-                                            )
-                                            .flags(MessageFlags::EPHEMERAL)
-                                            .build(),
-                                    ),
-                                },
-                            )
-                            .exec()
-                            .await?;
+                let invitation = MatchmakingInvitation::find()
+                    .filter(matchmaking_invitation::Column::MessageId.eq(IdWrapper::from(msg_id)))
+                    .filter(matchmaking_invitation::Column::ChannelId.eq(IdWrapper::from(chan_id)))
+                    .one(self.utils.db_ref())
+                    .await?
+                    .ok_or_else(|| anyhow!("could not find a valid invitation."))?;
 
-                        return Ok(());
-                    }
+                let user_model = self.utils.find_or_create_user(user.id).await?;
+
+                if invitation.extended_to != user_model.user_id {
+                    self.utils
+                        .http_client
+                        .interaction(self.utils.application_id)
+                        .create_response(
+                            data.interaction.id,
+                            data.interaction.token.as_str(),
+                            &InteractionResponse {
+                                kind: InteractionResponseType::ChannelMessageWithSource,
+                                data: Some(
+                                    InteractionResponseDataBuilder::new()
+                                        .content("You were not invited to this match.".to_string())
+                                        .flags(MessageFlags::EPHEMERAL)
+                                        .build(),
+                                ),
+                            },
+                        )
+                        .exec()
+                        .await?;
+
+                    return Ok(());
                 }
 
-                let opponent = if let Some(invited) = invitation.invited {
-                    invited
-                } else {
-                    user.id
-                };
-
-                let guild_id = data
-                    .interaction
-                    .guild_id
-                    .ok_or_else(|| anyhow!("Command cannot be run in a DM"))?;
+                let opponent = Users::find_by_id(invitation.invited_by)
+                    .one(self.utils.db_ref())
+                    .await?
+                    .ok_or_else(|| {
+                        anyhow!("could not find user information for the person that invited you")
+                    })?;
 
                 let author_data: Member = self
                     .utils
                     .http_client
-                    .guild_member(guild_id, invitation.author)
-                    .exec()
-                    .await?
-                    .model()
-                    .await?;
-                let opponent_data: Member = self
-                    .utils
-                    .http_client
-                    .guild_member(guild_id, opponent)
+                    .guild_member(
+                        guild_id,
+                        opponent
+                            .discord_user
+                            .ok_or_else(|| anyhow!("user does not have a discord id"))?
+                            .into(),
+                    )
                     .exec()
                     .await?
                     .model()
                     .await?;
 
+                let opponent_data: Member = self
+                    .utils
+                    .http_client
+                    .guild_member(
+                        guild_id,
+                        user_model
+                            .discord_user
+                            .ok_or_else(|| anyhow!("user does not have a discord id"))?
+                            .into(),
+                    )
+                    .exec()
+                    .await?
+                    .model()
+                    .await?;
+                let message_id = invitation
+                    .message_id
+                    .ok_or_else(|| anyhow!("no invitation message id found"))?;
+
                 let thread = self
                     .start_matchmaking_thread(
                         guild_id,
-                        invitation.message_id,
+                        message_id.into_id(),
                         format!(
                             "{} vs {}",
                             author_data.nick.unwrap_or(author_data.user.name),
@@ -401,7 +415,7 @@ impl InteractionHandler for MatchmakingCommandHandler {
                     )
                     .await?;
 
-                let users = vec![opponent, invitation.author];
+                let users = vec![author_data.user.id, opponent_data.user.id];
                 let res = self.add_users_to_thread(thread.id, &users).await;
 
                 if let Err(e) = res {
@@ -419,19 +433,34 @@ impl InteractionHandler for MatchmakingCommandHandler {
                 self.send_thread_opening_message(&users, thread.id).await?;
 
                 let started_at = Utc::now();
-                let session = Session {
+
+                let owner = self.utils.find_or_create_user(author_data.user.id).await?;
+
+                let lobby = matchmaking_lobbies::Model {
                     id: Uuid::new_v4(),
-                    users,
-                    thread: thread.id,
                     started_at,
-                    timeout_after: started_at + chrono::Duration::from_std(TIMEOUT_AFTER).unwrap(),
+                    timeout_after: started_at + chrono::Duration::hours(3),
+                    channel_id: thread.id.into(),
+                    description: None,
+                    owner: owner.user_id,
+                    privacy: LobbyPrivacy::Open,
+                    game: None,
+                    game_other: None,
                 };
 
-                self.sessions.insert(thread.id, session);
+                for user in users {
+                    // Create a discord user, in case they don't exist.
+                    // TODO: Do this in bulk
+                    self.utils.find_or_create_user(user).await?;
+                }
+
+                let _res = matchmaking_lobbies::Entity::insert(lobby.into_active_model())
+                    .exec(self.utils.db_ref())
+                    .await?;
 
                 self.utils
                     .http_client
-                    .update_message(invitation.channel_id, invitation.message_id)
+                    .update_message(invitation.channel_id.into(), message_id.into_id())
                     .components(Some(&[]))?
                     .exec()
                     .await?;
@@ -444,9 +473,12 @@ impl InteractionHandler for MatchmakingCommandHandler {
                     .interaction
                     .message
                     .ok_or_else(|| anyhow!("interaction not run on a message component"))?;
-                if !self.invitations.contains_key(&msg.id) {
-                    return Err(anyhow!("could not find that match invitation"));
-                }
+
+                let invitation = MatchmakingInvitation::find()
+                    .filter(matchmaking_invitation::Column::MessageId.eq(IdWrapper::from(msg.id)))
+                    .one(self.utils.db_ref())
+                    .await?
+                    .ok_or_else(|| anyhow!("could not find that match invitation"))?;
 
                 // TODO: Cache this
                 let guild = self
@@ -470,16 +502,14 @@ impl InteractionHandler for MatchmakingCommandHandler {
                     false
                 };
 
+                let user_model = self.utils.find_or_create_user(user.id).await?;
+
                 // cancel invitation
-                let (_key, invitation) = self
-                    .invitations
-                    .remove_if(&msg.id, |_key, invitation| {
-                        if !is_admin && !invitation.is_participating(user.id) {
-                            return false;
-                        }
-                        true
-                    })
-                    .ok_or_else(|| anyhow!("you are not allowed to delete that invitation"))?;
+                if user_model.user_id != invitation.extended_to
+                    && user_model.user_id != invitation.invited_by
+                {
+                    return Err(anyhow!("not authorized to deny that invitation"));
+                }
 
                 let dm_res = self
                     .dm_users_upon_cancellation(&invitation, &user, &guild)
@@ -509,13 +539,15 @@ impl InteractionHandler for MatchmakingCommandHandler {
                 }
 
                 // Remove the Accept/Deny buttons from the message
-                self.utils
-                    .http_client
-                    .update_message(invitation.channel_id, invitation.message_id)
-                    .components(Some(&[]))?
-                    .content(None)?
-                    .exec()
-                    .await?;
+                if let Some(msg_id) = invitation.message_id {
+                    self.utils
+                        .http_client
+                        .update_message(invitation.channel_id.into_id(), msg_id.into_id())
+                        .components(Some(&[]))?
+                        .content(None)?
+                        .exec()
+                        .await?;
+                }
 
                 self.utils
                     .http_client
@@ -546,13 +578,11 @@ impl InteractionHandler for MatchmakingCommandHandler {
 impl MatchmakingCommandHandler {
     pub fn new(utils: Arc<CommonUtilities>) -> Self {
         // TODO: Start a thread to keep track of the matchmaking instances.
-        let sessions = Arc::new(DashMap::with_shard_amount(4));
-        let invitations = Arc::new(DashMap::with_shard_amount(4));
         let utils_bg = utils.clone();
         let background_task = tokio::task::spawn(async move {
             let bg = BackgroundLoop::new(utils_bg);
             loop {
-                if let Err(e) = bg.update().await {
+                if let Err(e) = bg.background_loop().await {
                     error!(error = ?e, "background loop update failed");
                 }
             }
@@ -560,80 +590,8 @@ impl MatchmakingCommandHandler {
 
         Self {
             utils,
-            sessions,
             _background_task: background_task,
-            invitations,
         }
-    }
-
-    #[instrument(skip_all)]
-    async fn background_loop(
-        sessions: Arc<DashMap<Id<ChannelMarker>, Session>>,
-        utils: Arc<CommonUtilities>,
-        _interactions: Arc<DashMap<Id<MessageMarker>, MatchInvitation>>,
-    ) {
-        let mut stream = {
-            let s = sessions.clone();
-            utils
-                .standby
-                .wait_for_event_stream(move |e: &Event| match e {
-                    Event::ChannelDelete(chan) => s.contains_key(&chan.id),
-                    _ => false,
-                })
-        };
-
-        let mut interval = tokio::time::interval(Duration::from_secs(30));
-
-        let mut thread_ids_to_remove = Vec::new();
-
-        loop {
-            tokio::select! {
-                _ = interval.tick() => {
-                    let start = Instant::now();
-                    let s_count = sessions.len();
-                    debug!(num_sessions = ?s_count, "Filtering sessions");
-
-                    let now = Utc::now();
-
-                    sessions.retain(|_key, val: &mut Session| {
-                        let res = val.timeout_after > now;
-                        if !res {
-                            thread_ids_to_remove.push(val.thread);
-                        }
-                        res
-                    });
-
-                    debug!(time_ms = ?start.elapsed(), "Found all bad sessions");
-
-                    for thread in &thread_ids_to_remove {
-                        let fut = Self::timeout_matchmaking_session(*thread, utils.as_ref());
-                        // TODO: Store this in a FuturesUnordered and send any errors back to the parent struct (Prob best to do through a channel)
-                        if let Err(e) = fut.await {
-                            error!(error = ?e, "Failure to delete thread");
-                        }
-                    }
-
-                    thread_ids_to_remove.clear();
-
-                    let end = start.elapsed();
-                    debug!(end = ?end, time_ms = ?end.as_millis(), sessions_removed = ?s_count - sessions.len(), "Finished filtering sessions");
-                }
-                chan_delete = stream.next() => {
-                    debug!(del = ?format!("{:?}", chan_delete), "Channel was deleted");
-                }
-            }
-        }
-    }
-
-    async fn timeout_matchmaking_session(
-        thread: Id<ChannelMarker>,
-        utils: &CommonUtilities,
-    ) -> anyhow::Result<()> {
-        // TODO: Send a message, declaring the timeout of the session.
-
-        utils.http_client.delete_channel(thread).exec().await?;
-
-        Ok(())
     }
 
     async fn send_thread_opening_message(
@@ -735,32 +693,44 @@ impl MatchmakingCommandHandler {
 
     async fn dm_users_upon_cancellation(
         &self,
-        invitation: &MatchInvitation,
+        invitation: &matchmaking_invitation::Model,
         user: &User,
         guild: &Guild,
     ) -> anyhow::Result<()> {
-        let mut err = None;
+        let user_model = self.utils.find_or_create_user(user.id).await?;
 
-        if user.id != invitation.author {
-            // send a message to the author
+        if user_model.user_id != invitation.invited_by {
+            let author = Users::find_by_id(invitation.invited_by)
+                .one(self.utils.db_ref())
+                .await?
+                .ok_or_else(|| anyhow!("no user found with that id"))?;
             let res = self
-                .dm_invited(invitation.author, user, guild, invitation)
+                .dm_invited(
+                    author
+                        .discord_user
+                        .ok_or_else(|| anyhow!("user does not have a valid discord user"))?
+                        .into_id(),
+                    user,
+                    guild,
+                    invitation,
+                )
                 .await;
-
-            if let Err(e) = res {
-                err = Some(anyhow!(e));
-            }
+        } else {
+            let user_model = Users::find_by_id(invitation.extended_to)
+                .one(self.utils.db_ref())
+                .await?
+                .ok_or_else(|| anyhow!("no user found with that id"))?;
+            self.dm_invited(
+                user_model
+                    .discord_user
+                    .ok_or_else(|| anyhow!("user does not have a valid discord user"))?
+                    .into_id(),
+                user,
+                guild,
+                invitation,
+            )
+            .await?;
         }
-        if invitation.invited.map_or_else(|| false, |i| i != user.id) {
-            // send a message to the invited
-            let invited = invitation.invited.unwrap();
-            self.dm_invited(invited, user, guild, invitation).await?;
-        }
-
-        if let Some(e) = err {
-            return Err(e);
-        }
-
         Ok(())
     }
 
@@ -770,7 +740,7 @@ impl MatchmakingCommandHandler {
         // The person that cancelled the invitation
         canceller: &User,
         guild: &Guild,
-        _invitation: &MatchInvitation,
+        _invitation: &matchmaking_invitation::Model,
     ) -> anyhow::Result<Message> {
         // TODO: Cache this
         let dm = self
@@ -1030,7 +1000,7 @@ impl BackgroundLoop {
 
     /// This function should only return catestrophic errors!
     #[instrument(skip_all)]
-    async fn background_loop(&mut self) -> anyhow::Result<()> {
+    async fn background_loop(&self) -> anyhow::Result<()> {
         let mut stream = {
             self.utils
                 .standby
@@ -1067,8 +1037,6 @@ impl BackgroundLoop {
                 }
             }
         }
-
-        Ok(())
     }
 
     #[instrument(skip_all)]

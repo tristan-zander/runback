@@ -1,6 +1,6 @@
-use bot::entity::{matchmaking_settings, prelude::*};
+use bot::entity::prelude::*;
 use chrono::Utc;
-use sea_orm::{prelude::*, DatabaseConnection, Set};
+use sea_orm::{prelude::*, DatabaseConnection, IntoActiveModel, Set};
 use twilight_cache_inmemory::InMemoryCache;
 use twilight_model::{
     application::interaction::Interaction,
@@ -129,5 +129,27 @@ impl CommonUtilities {
 
         let user = self.http_client.user(user).exec().await?.model().await?;
         Ok(user)
+    }
+
+    pub async fn find_or_create_user(&self, id: Id<UserMarker>) -> anyhow::Result<users::Model> {
+        let res = Users::find()
+            .filter(users::Column::DiscordUser.eq(IdWrapper::from(id)))
+            .one(self.db_ref())
+            .await?;
+
+        if let Some(user) = res {
+            Ok(user)
+        } else {
+            let user = users::Model {
+                user_id: Uuid::new_v4(),
+                discord_user: Some(id.into()),
+            };
+
+            let user = Users::insert(user.into_active_model())
+                .exec_with_returning(self.db_ref())
+                .await?;
+
+            return Ok(user);
+        }
     }
 }

@@ -2,7 +2,7 @@
 
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
-use twilight_model::id::marker::MessageMarker;
+use twilight_model::id::marker::{ChannelMarker, MessageMarker};
 
 use crate::entity::prelude::*;
 
@@ -11,13 +11,16 @@ use crate::entity::prelude::*;
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
-    pub lobby: Uuid,
+    #[sea_orm(nullable)]
+    pub lobby: Option<Uuid>,
     /// The user being invited.
     pub extended_to: Uuid,
     /// The user who sent the invitation.
     pub invited_by: Uuid,
     pub game: Option<Uuid>,
     pub description: Option<String>,
+    /// The ID of the channel that the Discord Message is in
+    pub channel_id: IdWrapper<ChannelMarker>,
     /// The ID of the Discord message.
     pub message_id: Option<IdWrapper<MessageMarker>>,
     pub expires_at: DateTimeUtc,

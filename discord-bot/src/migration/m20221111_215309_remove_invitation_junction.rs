@@ -22,9 +22,7 @@ impl MigrationTrait for Migration {
                 Table::alter()
                     .table(MatchmakingInvitation)
                     .add_column_if_not_exists(
-                        ColumnDef::new(matchmaking_invitation::Column::Lobby)
-                            .uuid()
-                            .not_null(),
+                        ColumnDef::new(matchmaking_invitation::Column::Lobby).uuid(),
                     )
                     .add_foreign_key(
                         ForeignKey::create()
@@ -55,6 +53,11 @@ impl MigrationTrait for Migration {
                     .add_column_if_not_exists(
                         ColumnDef::new(matchmaking_invitation::Column::ExpiresAt)
                             .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .add_column_if_not_exists(
+                        ColumnDef::new(matchmaking_invitation::Column::ChannelId)
+                            .big_integer()
                             .not_null(),
                     )
                     .to_owned(),

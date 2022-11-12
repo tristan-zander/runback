@@ -21,7 +21,7 @@ pub mod users;
 
 pub use sea_orm;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Copy)]
 pub struct IdWrapper<T> {
     /// This field is translated into i64 through a memory transmute
     pub inner: NonZeroU64,

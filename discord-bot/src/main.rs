@@ -175,7 +175,7 @@ async fn entrypoint() -> anyhow::Result<()> {
             }
             Some(result) = executing_futures.next() => {
                 if let Err(e) = result {
-                    error!(error = ?e, "Application handler errored out");
+                    error!(error = ?e, "application handler error");
                 }
             }
             _ = shutdown => {
