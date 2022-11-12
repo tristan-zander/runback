@@ -1,7 +1,7 @@
-use bot::entity;
-use chrono::Utc;
+use bot::entity::{self, matchmaking_invitation, matchmaking_lobbies, IdWrapper};
+use chrono::{format::Fixed, DateTime, FixedOffset, Offset, Utc};
 use dashmap::DashMap;
-use sea_orm::prelude::*;
+use sea_orm::{prelude::*, IntoActiveModel, Set};
 use tokio::task::JoinHandle;
 use twilight_gateway::Event;
 use twilight_model::{
@@ -14,6 +14,7 @@ use twilight_model::{
         thread::AutoArchiveDuration,
         Channel, ChannelType, Message,
     },
+    gateway::payload::incoming::ChannelDelete,
     guild::{Guild, Member},
     http::interaction::{InteractionResponse, InteractionResponseType},
     id::{
@@ -36,13 +37,13 @@ use super::{
 use futures::StreamExt;
 
 use std::{
+    ops::Add,
     sync::Arc,
     time::{Duration, Instant},
 };
 
-// TODO: Make this 3 hours after testing
-// const TIMEOUT_AFTER: Duration = chrono::Duration::hours(3);
-static TIMEOUT_AFTER: Duration = Duration::from_secs(60);
+// 3 hours
+static TIMEOUT_AFTER: Duration = Duration::from_secs(60 * 60 * 3);
 
 // TODO: Don't use a model like this. Use the sea_orm model that's stored in the database
 #[derive(Debug, Clone)]
@@ -551,7 +552,9 @@ impl MatchmakingCommandHandler {
         let background_task = tokio::task::spawn(async move {
             let bg = BackgroundLoop::new(utils_bg);
             loop {
-                bg.update().await?;
+                if let Err(e) = bg.update().await {
+                    error!(error = ?e, "background loop update failed");
+                }
             }
         });
 
@@ -817,42 +820,200 @@ impl BackgroundLoop {
     }
 
     /// Queries and updates the sessions and invitations.
-    async fn update(&self) -> Result<(), anyhow::Error> {
-        let expired = self.get_expired_sessions().await?;
+    #[instrument(skip_all)]
+    async fn update(&self) -> anyhow::Result<()> {
+        // TODO: Aggregate errors
 
-        for s in expired {
+        // Timeout expired sessions
+        let expired = self.get_expired_sessions().await?;
+        for s in &expired {
             // Send an expiration message, archive the thread, and end the session.
-            let chan_id = s.channel_id.into_id();
-            let chan = self
-                .utils
-                .http_client
-                .channel(chan_id)
-                .exec()
-                .await?
-                .model()
-                .await?;
+            if self.check_if_session_should_be_extended(s).await? {
+                self.extend_session(s).await?;
+                continue;
+            }
+            self.timeout_expired_session(s).await?;
+        }
+
+        // Send pre-expiration warning messages
+        let almost_expired = self.get_expiring_sessions().await?;
+        for s in &almost_expired {
+            if self.check_if_session_should_be_extended(s).await? {
+                self.extend_session(s).await?;
+                continue;
+            }
+            self.send_expiration_warning_message(s).await?;
+        }
+
+        Ok(())
+    }
+
+    #[instrument(skip_all)]
+    async fn get_expiring_sessions(
+        &self,
+    ) -> Result<Vec<entity::matchmaking_lobbies::Model>, anyhow::Error> {
+        let sessions = entity::matchmaking_lobbies::Entity::find()
+            .filter(
+                entity::matchmaking_lobbies::Column::TimeoutAfter
+                    // Get all sessions expiring in 15 minutes
+                    .lte(Utc::now().add(chrono::Duration::minutes(15))),
+            )
+            .all(self.utils.db_ref())
+            .await?;
+
+        Ok(sessions)
+    }
+
+    async fn extend_session(&self, s: &matchmaking_lobbies::Model) -> anyhow::Result<()> {
+        let lobby = matchmaking_lobbies::ActiveModel {
+            id: Set(s.id),
+            timeout_after: Set(Utc::now() + chrono::Duration::minutes(30)),
+            ..Default::default()
+        };
+
+        matchmaking_lobbies::Entity::update(lobby)
+            .exec(self.utils.db_ref())
+            .await?;
+
+        Ok(())
+    }
+
+    async fn check_if_session_should_be_extended(
+        &self,
+        s: &matchmaking_lobbies::Model,
+    ) -> anyhow::Result<bool> {
+        let chan = self
+            .utils
+            .http_client
+            .channel(s.channel_id.into_id())
+            .exec()
+            .await?
+            .model()
+            .await?;
+
+        if let Some(msg) = chan.last_message_id {
             let msg = self
                 .utils
                 .http_client
-                .create_message(chan.id)
-                .content("This matchmaking session has timed out. See ya later!")?
+                .message(chan.id, msg.cast())
                 .exec()
                 .await?
                 .model()
                 .await?;
-            if chan.kind.is_thread() {
-                let thread = self
-                    .utils
-                    .http_client
-                    .update_thread(chan_id)
-                    .archived(true)
-                    .exec()
-                    .await?
-                    .model()
-                    .await?;
+
+            let now =
+                DateTime::<FixedOffset>::from_utc(Utc::now().naive_utc(), FixedOffset::east(0));
+            let last_message_sent_at = chrono::DateTime::parse_from_rfc3339(
+                msg.timestamp.iso_8601().to_string().as_str(),
+            )?;
+
+            // Check if the last message was sent in the last 30 minutes
+            // If it was, then extend the expiration time by a half hour.
+            // Otherwise, send the expiration warning.
+
+            if last_message_sent_at > (now - chrono::Duration::minutes(30)) {
+                return Ok(true);
             }
         }
+        return Ok(false);
+    }
 
+    #[instrument(skip_all)]
+    async fn send_expiration_warning_message(
+        &self,
+        s: &matchmaking_lobbies::Model,
+    ) -> anyhow::Result<()> {
+        let _msg = self
+            .utils
+            .http_client
+            .create_message(s.channel_id.into_id())
+            .content("This session will close in 15 minutes due to inactivity. Please click \"Extend\" or type in chat to extend the session.")?
+            .components(&[
+                Component::ActionRow(
+                    ActionRow {
+                        components: vec![
+                            Component::Button(
+                                Button {
+                                    custom_id: Some("matchmaking:extend_session".to_string()),
+                                    disabled: false,
+                                    emoji: None,
+                                    label: Some("Extend".to_string()),
+                                    style: ButtonStyle::Primary,
+                                    url: None,
+                                }
+                            ),
+                            Component::Button(
+                                Button {
+                                    custom_id: Some("matchmaking:close_lobby".to_string()),
+                                    disabled: false,
+                                    emoji: None,
+                                    label: Some("Close Lobby".to_string()),
+                                    style: ButtonStyle::Danger,
+                                    url: None
+                                }
+                            )
+                        ]
+                    }
+                )
+            ])?
+            .exec()
+            .await?
+            .model()
+            .await?;
+
+        Ok(())
+    }
+
+    #[instrument(skip_all)]
+    async fn timeout_expired_session(
+        &self,
+        s: &entity::matchmaking_lobbies::Model,
+    ) -> anyhow::Result<()> {
+        let chan_id = s.channel_id.into_id();
+        let chan = self
+            .utils
+            .http_client
+            .channel(chan_id)
+            .exec()
+            .await?
+            .model()
+            .await?;
+        let _msg = self
+            .utils
+            .http_client
+            .create_message(chan.id)
+            .content("This matchmaking session has timed out. See ya later!")?
+            .exec()
+            .await?;
+        if chan.kind.is_thread() {
+            let _thread = self
+                .utils
+                .http_client
+                .update_thread(chan_id)
+                .archived(true)
+                .exec()
+                .await?;
+        }
+
+        // Close any matchmaking invitations.
+        self.deactivate_invitations_upon_closing_lobby(s).await?;
+
+        Ok(())
+    }
+
+    async fn deactivate_invitations_upon_closing_lobby(
+        &self,
+        lobby: &matchmaking_lobbies::Model,
+    ) -> anyhow::Result<()> {
+        let _update_res = entity::matchmaking_invitation::Entity::update_many()
+            .filter(matchmaking_invitation::Column::Lobby.eq(lobby.id))
+            .filter(matchmaking_invitation::Column::ExpiresAt.gt(Utc::now()))
+            .set(matchmaking_invitation::ActiveModel {
+                expires_at: Set(Utc::now()),
+                ..Default::default()
+            })
+            .exec(self.utils.db_ref())
+            .await?;
         Ok(())
     }
 
@@ -867,75 +1028,61 @@ impl BackgroundLoop {
         Ok(sessions)
     }
 
-    async fn send_pre_expiration_messages(&self) {}
-
+    /// This function should only return catestrophic errors!
     #[instrument(skip_all)]
-    async fn background_loop(
-        &self,
-        sessions: Arc<DashMap<Id<ChannelMarker>, Session>>,
-        utils: Arc<CommonUtilities>,
-        _interactions: Arc<DashMap<Id<MessageMarker>, MatchInvitation>>,
-    ) {
+    async fn background_loop(&mut self) -> anyhow::Result<()> {
         let mut stream = {
-            let s = sessions.clone();
-            utils
+            self.utils
                 .standby
                 .wait_for_event_stream(move |e: &Event| match e {
-                    Event::ChannelDelete(chan) => s.contains_key(&chan.id),
+                    Event::ChannelDelete(_) => true,
                     _ => false,
                 })
         };
 
-        let mut interval = tokio::time::interval(Duration::from_secs(30));
-
-        let mut thread_ids_to_remove = Vec::new();
+        let mut interval = tokio::time::interval(Duration::from_secs(60));
 
         loop {
             tokio::select! {
                 _ = interval.tick() => {
                     let start = Instant::now();
-                    let s_count = sessions.len();
-                    debug!(num_sessions = ?s_count, "Filtering sessions");
+                    debug!("Filtering sessions");
 
                     let now = Utc::now();
 
-                    sessions.retain(|_key, val: &mut Session| {
-                        let res = val.timeout_after > now;
-                        if !res {
-                            thread_ids_to_remove.push(val.thread);
-                        }
-                        res
-                    });
-
-                    debug!(time_ms = ?start.elapsed(), "Found all bad sessions");
-
-                    for thread in &thread_ids_to_remove {
-                        let fut = Self::timeout_matchmaking_session(*thread, utils.as_ref());
-                        // TODO: Store this in a FuturesUnordered and send any errors back to the parent struct (Prob best to do through a channel)
-                        if let Err(e) = fut.await {
-                            error!(error = ?e, "Failure to delete thread");
-                        }
+                    if let Err(e) = self.update().await {
+                        error!(error = ?e, "Encountered errors while updating sessions.");
                     }
 
-                    thread_ids_to_remove.clear();
-
                     let end = start.elapsed();
-                    debug!(end = ?end, time_ms = ?end.as_millis(), sessions_removed = ?s_count - sessions.len(), "Finished filtering sessions");
+                    debug!(end = ?end, time_ms = ?end.as_millis(), "Finished filtering sessions");
                 }
-                chan_delete = stream.next() => {
-                    debug!(del = ?format!("{:?}", chan_delete), "Channel was deleted");
+                Some(chan_delete) = stream.next() => {
+                    debug!(del = ?format!("{:?}", chan_delete), "Channel was deleted. Remove any sessions attached to this channel.");
+                    if let Event::ChannelDelete(chan) = chan_delete {
+                        if let Err(e) = self.on_channel_delete(chan).await {
+                            error!(error = ?e, "encountered error when dealing with deleted channel");
+                        }
+                    }
                 }
             }
         }
+
+        Ok(())
     }
 
-    async fn timeout_matchmaking_session(
-        thread: Id<ChannelMarker>,
-        utils: &CommonUtilities,
-    ) -> anyhow::Result<()> {
-        // TODO: Send a message, declaring the timeout of the session.
+    #[instrument(skip_all)]
+    async fn on_channel_delete(&self, chan: Box<ChannelDelete>) -> anyhow::Result<()> {
+        let lobby = matchmaking_lobbies::Entity::find()
+            .filter(matchmaking_lobbies::Column::ChannelId.eq(IdWrapper::from(chan.id)))
+            .one(self.utils.db_ref())
+            .await?;
 
-        utils.http_client.delete_channel(thread).exec().await?;
+        if let Some(lobby) = lobby {
+            // Delete the lobby and de-activate all invitations.
+            self.deactivate_invitations_upon_closing_lobby(&lobby)
+                .await?;
+        }
 
         Ok(())
     }

@@ -25,8 +25,6 @@ pub enum Relation {
     State,
     #[sea_orm(has_many = "super::matchmaking_invitation::Entity")]
     MatchmakingInvitation,
-    #[sea_orm(has_many = "super::matchmaking_player_invitation::Entity")]
-    MatchmakingPlayerInvitation,
 }
 
 impl Related<super::matchmaking_lobbies::Entity> for Entity {
@@ -50,12 +48,6 @@ impl Related<super::state::Entity> for Entity {
 impl Related<super::matchmaking_invitation::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::MatchmakingInvitation.def()
-    }
-}
-
-impl Related<super::matchmaking_player_invitation::Entity> for Entity {
-    fn to() -> RelationDef {
-        Relation::MatchmakingPlayerInvitation.def()
     }
 }
 

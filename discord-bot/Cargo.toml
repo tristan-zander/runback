@@ -19,6 +19,7 @@ required-features = ["migrator"]
 
 [features]
 migrator = ["sea-orm-migration"]
+default = ["migrator"]
 
 [dependencies.sea-orm-migration]
 version = "^0.9.0"

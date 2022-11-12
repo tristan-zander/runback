@@ -5,6 +5,7 @@ use crate::entity::{
     *,
 };
 use sea_orm_migration::prelude::*;
+use crate::migration::deprecated::*;
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;

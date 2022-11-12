@@ -6,10 +6,6 @@ pub use super::{game_character, game_character::Entity as GameCharacter};
 pub use super::{matchmaking_invitation, matchmaking_invitation::Entity as MatchmakingInvitation};
 pub use super::{matchmaking_lobbies, matchmaking_lobbies::Entity as MatchmakingLobbies};
 pub use super::{
-    matchmaking_player_invitation,
-    matchmaking_player_invitation::Entity as MatchmakingPlayerInvitation,
-};
-pub use super::{
     matchmaking_player_lobby, matchmaking_player_lobby::Entity as MatchmakingPlayerLobby,
 };
 pub use super::{matchmaking_settings, matchmaking_settings::Entity as MatchmakingSettings};

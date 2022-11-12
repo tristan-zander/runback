@@ -13,7 +13,6 @@ pub mod game;
 pub mod game_character;
 pub mod matchmaking_invitation;
 pub mod matchmaking_lobbies;
-pub mod matchmaking_player_invitation;
 pub mod matchmaking_player_lobby;
 pub mod matchmaking_settings;
 pub mod sea_orm_active_enums;
