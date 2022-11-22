@@ -22,7 +22,7 @@ pub struct Model {
     pub privacy: LobbyPrivacy,
     pub game: Option<Uuid>,
     pub game_other: Option<String>,
-    pub timeout_warning_message: Option<IdWrapper<MessageMarker>>
+    pub timeout_warning_message: Option<IdWrapper<MessageMarker>>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
