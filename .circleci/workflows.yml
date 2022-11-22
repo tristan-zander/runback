@@ -137,7 +137,7 @@ jobs:
             npm install
             cargo install semantic-release-rust --version 1.0.0-alpha.8
             cargo install cargo-workspaces --version ^0.2
-            export PATH=$PATH:~/.cargo/bin
+            echo 'export PATH=$PATH:~/.cargo/bin' >> $BASH_ENV
           working_directory: /tmp/app/discord-bot
       - save_cache:
           paths:
@@ -146,5 +146,8 @@ jobs:
 
       - run:
           name: Run semantic-release
-          command: npx semantic-release
+          shell: /bin/bash
+          command: |
+            export PATH=$PATH:~/.cargo/bin
+            npx semantic-release
           working_directory: /tmp/app/discord-bot
