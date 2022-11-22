@@ -446,6 +446,7 @@ impl InteractionHandler for MatchmakingCommandHandler {
                     game: None,
                     game_other: None,
                     ended_at: None,
+                    timeout_warning_message: None,
                 };
 
                 for user in users {
@@ -821,6 +822,11 @@ impl BackgroundLoop {
                 self.extend_lobby(s).await?;
                 continue;
             }
+
+            if s.timeout_warning_message.is_some() {
+                continue;
+            }
+
             self.send_expiration_warning_message(s).await?;
         }
 
@@ -846,6 +852,7 @@ impl BackgroundLoop {
         let lobby = matchmaking_lobbies::ActiveModel {
             id: Set(s.id),
             timeout_after: Set(Utc::now() + chrono::Duration::minutes(30)),
+            timeout_warning_message: Set(None),
             ..Default::default()
         };
         debug!(lobby = ?lobby.id, "extending lobby session");
@@ -871,6 +878,8 @@ impl BackgroundLoop {
             .await?;
 
         if let Some(msg) = chan.last_message_id {
+            // If the user deleted the last message, then it's possible that the
+            // last message id is going to return an invalid message.
             let msg = self
                 .utils
                 .http_client
@@ -890,14 +899,16 @@ impl BackgroundLoop {
             // If it was, then extend the expiration time by a half hour.
             // Otherwise, send the expiration warning.
 
-            // TODO: Check last updated time
             if last_message_sent_at > (now - chrono::Duration::minutes(30))
                 && msg.author.id != self.utils.current_user.id
+                && s.timeout_warning_message
+                    .as_ref()
+                    .map_or(true, |id| id.into_id() != msg.id)
             {
                 return Ok(true);
             }
         }
-        return Ok(false);
+        Ok(false)
     }
 
     #[instrument(skip_all)]
@@ -905,39 +916,7 @@ impl BackgroundLoop {
         &self,
         s: &matchmaking_lobbies::Model,
     ) -> anyhow::Result<()> {
-        let should_send_message = {
-            let mut should_send_message = true;
-            let chan = self
-                .utils
-                .http_client
-                .channel(s.channel_id.into_id())
-                .exec()
-                .await?
-                .model()
-                .await?;
-
-            if let Some(msg) = chan.last_message_id {
-                let msg = self
-                    .utils
-                    .http_client
-                    .message(chan.id, msg.cast())
-                    .exec()
-                    .await?
-                    .model()
-                    .await?;
-
-                if msg.author.id == self.utils.current_user.id {
-                    should_send_message = false;
-                }
-            }
-            should_send_message
-        };
-
-        if !should_send_message {
-            return Ok(());
-        }
-
-        let _msg = self
+        let msg = self
             .utils
             .http_client
             .create_message(s.channel_id.into_id())
@@ -974,6 +953,14 @@ impl BackgroundLoop {
             .await?
             .model()
             .await?;
+
+        MatchmakingLobbies::update(matchmaking_lobbies::ActiveModel {
+            id: Set(s.id),
+            timeout_warning_message: Set(Some(msg.id.into())),
+            ..Default::default()
+        })
+        .exec(self.utils.db_ref())
+        .await?;
 
         Ok(())
     }
@@ -1012,6 +999,14 @@ impl BackgroundLoop {
 
         // Close any matchmaking invitations.
         self.close_lobby(s).await?;
+
+        MatchmakingLobbies::update(matchmaking_lobbies::ActiveModel {
+            id: Set(s.id),
+            ended_at: Set(Some(Utc::now())),
+            ..Default::default()
+        })
+        .exec(self.utils.db_ref())
+        .await?;
 
         Ok(())
     }

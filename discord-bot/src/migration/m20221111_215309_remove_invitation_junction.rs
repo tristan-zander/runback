@@ -25,6 +25,10 @@ impl MigrationTrait for Migration {
                         ColumnDef::new(matchmaking_lobbies::Column::EndedAt)
                             .timestamp_with_time_zone(),
                     )
+                    .add_column_if_not_exists(
+                        ColumnDef::new(matchmaking_lobbies::Column::TimeoutWarningMessage)
+                            .big_integer(),
+                    )
                     .to_owned(),
             )
             .await?;

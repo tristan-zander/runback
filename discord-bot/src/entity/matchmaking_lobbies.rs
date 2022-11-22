@@ -3,7 +3,7 @@
 use super::sea_orm_active_enums::LobbyPrivacy;
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
-use twilight_model::id::marker::ChannelMarker;
+use twilight_model::id::marker::{ChannelMarker, MessageMarker};
 
 use crate::entity::prelude::*;
 
@@ -22,6 +22,7 @@ pub struct Model {
     pub privacy: LobbyPrivacy,
     pub game: Option<Uuid>,
     pub game_other: Option<String>,
+    pub timeout_warning_message: Option<IdWrapper<MessageMarker>>
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
