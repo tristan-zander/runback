@@ -137,6 +137,7 @@ jobs:
             npm install
             cargo install semantic-release-rust --version 1.0.0-alpha.8
             cargo install cargo-workspaces --version ^0.2
+            echo 'export PATH=$PATH:~/.cargo/bin' >> $BASH_ENV
             export PATH=$PATH:~/.cargo/bin
           working_directory: /tmp/app/discord-bot
       - save_cache:
