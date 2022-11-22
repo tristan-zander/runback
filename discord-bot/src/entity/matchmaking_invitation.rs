@@ -2,7 +2,7 @@
 
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
-use twilight_model::id::marker::MessageMarker;
+use twilight_model::id::marker::{ChannelMarker, MessageMarker};
 
 use crate::entity::prelude::*;
 
@@ -11,10 +11,19 @@ use crate::entity::prelude::*;
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
+    #[sea_orm(nullable)]
+    pub lobby: Option<Uuid>,
+    /// The user being invited.
+    pub extended_to: Uuid,
+    /// The user who sent the invitation.
     pub invited_by: Uuid,
     pub game: Option<Uuid>,
     pub description: Option<String>,
+    /// The ID of the channel that the Discord Message is in
+    pub channel_id: IdWrapper<ChannelMarker>,
+    /// The ID of the Discord message.
     pub message_id: Option<IdWrapper<MessageMarker>>,
+    pub expires_at: DateTimeUtc,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -34,9 +43,23 @@ pub enum Relation {
         on_update = "Cascade",
         on_delete = "Cascade"
     )]
-    Users,
-    #[sea_orm(has_many = "super::matchmaking_player_invitation::Entity")]
-    MatchmakingPlayerInvitation,
+    InvitedBy,
+    #[sea_orm(
+        belongs_to = "super::users::Entity",
+        from = "Column::ExtendedTo",
+        to = "super::users::Column::UserId",
+        on_update = "Cascade",
+        on_delete = "Cascade"
+    )]
+    ExtendedTo,
+    #[sea_orm(
+        belongs_to = "super::matchmaking_lobbies::Entity",
+        from = "Column::Lobby",
+        to = "super::matchmaking_lobbies::Column::Id",
+        on_update = "Cascade",
+        on_delete = "Cascade"
+    )]
+    Lobby,
 }
 
 impl Related<super::game::Entity> for Entity {
@@ -47,13 +70,7 @@ impl Related<super::game::Entity> for Entity {
 
 impl Related<super::users::Entity> for Entity {
     fn to() -> RelationDef {
-        Relation::Users.def()
-    }
-}
-
-impl Related<super::matchmaking_player_invitation::Entity> for Entity {
-    fn to() -> RelationDef {
-        Relation::MatchmakingPlayerInvitation.def()
+        Relation::InvitedBy.def()
     }
 }
 

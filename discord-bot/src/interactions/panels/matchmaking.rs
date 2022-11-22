@@ -2,7 +2,7 @@ pub mod report_score {
     use std::str::FromStr;
 
     use twilight_model::{
-        application::interaction::MessageComponentInteraction,
+        application::interaction::{Interaction, InteractionData},
         id::{marker::UserMarker, Id},
     };
 
@@ -66,12 +66,25 @@ pub mod report_score {
         pub action: ReportScoreAction,
     }
 
-    impl TryFrom<MessageComponentInteraction> for ReportScorePanel {
+    impl TryFrom<Interaction> for ReportScorePanel {
         type Error = anyhow::Error;
 
-        fn try_from(interaction: MessageComponentInteraction) -> Result<Self, Self::Error> {
-            let embed = interaction
+        fn try_from(interaction: Interaction) -> Result<Self, Self::Error> {
+            let data = interaction
+                .data
+                .ok_or_else(|| anyhow!("no interaction data"))?;
+
+            let message = if let InteractionData::MessageComponent(message) = data {
+                message
+            } else {
+                return Err(anyhow!("not a message component interaction"));
+            };
+
+            let msg = interaction
                 .message
+                .ok_or_else(|| anyhow!("no message attached to this interaction"))?;
+
+            let embed = msg
                 .embeds
                 .get(0)
                 .ok_or_else(|| anyhow!("message contained no embed"))?;
@@ -120,7 +133,7 @@ pub mod report_score {
                 .value
                 .parse()?;
 
-            let button_id = interaction.data.custom_id.as_str();
+            let button_id = message.custom_id.as_str();
             let action = match button_id {
                 "switch_mode" => ReportScoreAction::SwitchMode,
                 "confirm_results" => ReportScoreAction::ConfirmResults,

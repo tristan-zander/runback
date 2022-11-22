@@ -3,7 +3,7 @@
 use super::sea_orm_active_enums::LobbyPrivacy;
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
-use twilight_model::id::marker::ChannelMarker;
+use twilight_model::id::marker::{ChannelMarker, MessageMarker};
 
 use crate::entity::prelude::*;
 
@@ -14,6 +14,7 @@ pub struct Model {
     pub id: Uuid,
     pub started_at: DateTimeUtc,
     pub timeout_after: DateTimeUtc,
+    pub ended_at: Option<DateTimeUtc>,
     pub channel_id: IdWrapper<ChannelMarker>,
     pub description: Option<String>,
     pub owner: Uuid,
@@ -21,28 +22,33 @@ pub struct Model {
     pub privacy: LobbyPrivacy,
     pub game: Option<Uuid>,
     pub game_other: Option<String>,
+    pub timeout_warning_message: Option<IdWrapper<MessageMarker>>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
     #[sea_orm(
-        belongs_to = "super::game::Entity",
-        from = "Column::Game",
-        to = "super::game::Column::Id",
-        on_update = "NoAction",
-        on_delete = "NoAction"
+        has_one = "super::game::Entity",
+        on_update = "Cascade",
+        on_delete = "Cascade"
     )]
     Game,
     #[sea_orm(
-        belongs_to = "super::users::Entity",
-        from = "Column::Owner",
-        to = "super::users::Column::UserId",
-        on_update = "NoAction",
+        has_one = "super::users::Entity",
+        on_update = "Cascade",
         on_delete = "NoAction"
     )]
-    Users,
+    Owner,
     #[sea_orm(has_many = "super::matchmaking_player_lobby::Entity")]
     MatchmakingPlayerLobby,
+    #[sea_orm(
+        belongs_to = "super::matchmaking_invitation::Entity",
+        from = "Column::Id",
+        to = "super::matchmaking_invitation::Column::Lobby",
+        on_update = "Cascade",
+        on_delete = "NoAction"
+    )]
+    Invitations,
 }
 
 impl Related<super::game::Entity> for Entity {
@@ -53,13 +59,19 @@ impl Related<super::game::Entity> for Entity {
 
 impl Related<super::users::Entity> for Entity {
     fn to() -> RelationDef {
-        Relation::Users.def()
+        Relation::Owner.def()
     }
 }
 
 impl Related<super::matchmaking_player_lobby::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::MatchmakingPlayerLobby.def()
+    }
+}
+
+impl Related<super::matchmaking_invitation::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::Invitations.def()
     }
 }
 

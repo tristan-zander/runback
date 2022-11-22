@@ -13,32 +13,25 @@ use twilight_util::builder::command::{CommandBuilder, StringBuilder};
 use twilight_util::builder::InteractionResponseDataBuilder as CallbackDataBuilder;
 
 use super::{
-    ApplicationCommandData, ApplicationCommandUtilities, CommandGroupDescriptor,
-    InteractionHandler, MessageComponentData,
+    ApplicationCommandData, CommandGroupDescriptor, CommonUtilities, InteractionHandler,
+    MessageComponentData,
 };
 
 // TODO: Make a distinct EULA for the bot itself
 const EULA: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../", "EULA.md"));
 
 pub struct EulaCommandHandler {
-    pub utils: Arc<ApplicationCommandUtilities>,
+    pub utils: Arc<CommonUtilities>,
 }
 
 #[async_trait]
 impl InteractionHandler for EulaCommandHandler {
     fn describe(&self) -> CommandGroupDescriptor {
-        let builder = CommandBuilder::new(
-            "eula".into(),
-            "Show the EULA".into(),
-            CommandType::ChatInput,
-        )
-        .option(
-            StringBuilder::new("accept".into(), "Accept the EULA (admin only)".into()).choices(
-                vec![(
-                    "I have read the EULA and agree to its terms.".into(),
-                    "accept".into(),
-                )],
-            ),
+        let builder = CommandBuilder::new("eula", "Show the EULA", CommandType::ChatInput).option(
+            StringBuilder::new("accept", "Accept the EULA (admin only)").choices(vec![(
+                "I have read the EULA and agree to its terms.",
+                "accept",
+            )]),
         );
 
         let command = builder.build();
@@ -51,7 +44,7 @@ impl InteractionHandler for EulaCommandHandler {
 
     async fn process_command(&self, data: Box<ApplicationCommandData>) -> anyhow::Result<()> {
         let command = &data.command;
-        debug!(options = %format!("{:?}", command.data.options));
+        debug!(options = %format!("{:?}", command.options));
 
         let gid = if let Some(gid) = command.guild_id {
             gid
@@ -59,21 +52,21 @@ impl InteractionHandler for EulaCommandHandler {
             let message = InteractionResponse {
                 data: Some(
                     CallbackDataBuilder::new()
-                        .content("You cannot use this command in a DM.".into())
+                        .content("You cannot use this command in a DM.")
                         .flags(MessageFlags::EPHEMERAL)
                         .build(),
                 ),
                 kind: InteractionResponseType::ChannelMessageWithSource,
             };
             self.utils
-                .send_message(command, &message)
+                .send_message(&data.interaction, &message)
                 .await
                 .map_err(|e| anyhow!("Could not send message: {}", e))?;
 
             return Ok(());
         };
 
-        let options = &command.data.options;
+        let options = &command.options;
         if !options.is_empty() && options[0].name.as_str() == "accept" {
             match &options[0].value {
                 CommandOptionValue::String(accepted) => {
@@ -81,14 +74,14 @@ impl InteractionHandler for EulaCommandHandler {
                         let message = InteractionResponse {
                             data: Some(
                             CallbackDataBuilder::new()
-                                .content("You must accept the EULA to use Runback. Run \"/eula\" without any arguments to see the EULA.".into())
+                                .content("You must accept the EULA to use Runback. Run \"/eula\" without any arguments to see the EULA.")
                                 .flags(MessageFlags::EPHEMERAL)
                                 .build()
                         ),
                             kind: InteractionResponseType::ChannelMessageWithSource,
                     };
                         self.utils
-                            .send_message(command, &message)
+                            .send_message(&data.interaction, &message)
                             .await
                             .map_err(|e| anyhow!("Could not send message: {}", e))?;
 
@@ -109,17 +102,14 @@ impl InteractionHandler for EulaCommandHandler {
                                 let message = InteractionResponse {
                                     data: Some(
                                         CallbackDataBuilder::new()
-                                            .content(
-                                                "Looks like you've already accepted the EULA."
-                                                    .into(),
-                                            )
+                                            .content("Looks like you've already accepted the EULA.")
                                             .flags(MessageFlags::EPHEMERAL)
                                             .build(),
                                     ),
                                     kind: InteractionResponseType::ChannelMessageWithSource,
                                 };
                                 self.utils
-                                    .send_message(command, &message)
+                                    .send_message(&data.interaction, &message)
                                     .await
                                     .map_err(|e| anyhow!("Could not send message: {}", e))?;
                                 return Ok(());
@@ -144,12 +134,12 @@ impl InteractionHandler for EulaCommandHandler {
 
                     let message = InteractionResponse { kind: InteractionResponseType::ChannelMessageWithSource, data: Some(
                             CallbackDataBuilder::new()
-                                .content("Okay, thanks for accepted the EULA. You may now use Runback's services.".into())
+                                .content("Okay, thanks for accepted the EULA. You may now use Runback's services.")
                                 .flags(MessageFlags::EPHEMERAL)
                                 .build(),
                         )};
                     self.utils
-                        .send_message(command, &message)
+                        .send_message(&data.interaction, &message)
                         .await
                         .map_err(|e| anyhow!("Could not send message: {}", e))?;
                 }
@@ -161,14 +151,14 @@ impl InteractionHandler for EulaCommandHandler {
             kind: InteractionResponseType::ChannelMessageWithSource,
             data: Some(
                 CallbackDataBuilder::new()
-                    .content(EULA.into())
+                    .content(EULA)
                     .flags(MessageFlags::EPHEMERAL)
                     .build(),
             ),
         };
 
         self.utils
-            .send_message(command, &message)
+            .send_message(&data.interaction, &message)
             .await
             .map_err(|e| anyhow!("Could not send message: {}", e))?;
 
@@ -189,7 +179,7 @@ impl InteractionHandler for EulaCommandHandler {
 }
 
 impl EulaCommandHandler {
-    pub fn new(utils: Arc<ApplicationCommandUtilities>) -> Self {
+    pub fn new(utils: Arc<CommonUtilities>) -> Self {
         Self { utils }
     }
 }

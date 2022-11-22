@@ -5,13 +5,16 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use bot::entity::sea_orm::{prelude::Uuid, DatabaseConnection};
 
-use futures::future::BoxFuture;
+use futures::{future::BoxFuture, Future};
 use tokio::time::timeout;
 use tracing::{Instrument, Level};
 use twilight_cache_inmemory::InMemoryCache;
 use twilight_gateway::Shard;
 use twilight_model::{
-    application::{command::Command, interaction::Interaction},
+    application::{
+        command::Command,
+        interaction::{Interaction, InteractionData, InteractionType},
+    },
     channel::message::MessageFlags,
     gateway::payload::incoming::InteractionCreate,
     http::interaction::{InteractionResponse, InteractionResponseType},
@@ -21,7 +24,7 @@ use twilight_standby::Standby;
 use twilight_util::builder::embed::{EmbedBuilder, EmbedFieldBuilder, EmbedFooterBuilder};
 
 use crate::interactions::application_commands::{
-    ApplicationCommandData, ApplicationCommandUtilities, MessageComponentData,
+    ApplicationCommandData, CommonUtilities, MessageComponentData,
 };
 
 use self::application_commands::{
@@ -32,7 +35,7 @@ use self::application_commands::{
 type HandlerType = Arc<Box<dyn InteractionHandler + Send + Sync + 'static>>;
 
 pub struct InteractionProcessor {
-    utils: Arc<ApplicationCommandUtilities>,
+    utils: Arc<CommonUtilities>,
     application_command_handlers: HashMap<Id<CommandMarker>, HandlerType>,
     component_handlers: HashMap<&'static str, HandlerType>,
     commands: Vec<Command>,
@@ -45,7 +48,7 @@ impl InteractionProcessor {
         cache: Arc<InMemoryCache>,
         standby: Arc<Standby>,
     ) -> anyhow::Result<Self> {
-        let utils = Arc::new(ApplicationCommandUtilities::new(db, cache, standby).await?);
+        let utils = Arc::new(CommonUtilities::new(db, cache, standby).await?);
         // let lfg_sessions = Arc::new(DashMap::new());
 
         event!(Level::INFO, "Registering top-level command handlers");
@@ -185,57 +188,71 @@ impl InteractionProcessor {
 
     pub fn handle_interaction<'shard>(
         &self,
-        interaction: InteractionCreate,
+        interaction: Box<InteractionCreate>,
         _shard: &'shard Shard,
     ) -> anyhow::Result<BoxFuture<'static, anyhow::Result<()>>> {
         event!(tracing::Level::DEBUG, "Received interaction");
 
         // TODO: Send a deferred message response, followup on it later
 
-        match &*interaction {
+        let interaction_data = if let Some(data) = &interaction.data {
+            data
+        } else {
+            return Ok(Box::pin(async { return Ok(()) }));
+        };
+
+        match interaction_data {
             // I think this is only for webhook interaction handlers
             // twilight_model::application::interaction::Interaction::Ping(_) => ,
-            Interaction::ApplicationCommand(command) => {
+            InteractionData::ApplicationCommand(command) => {
                 // self.application_command_handlers
                 //     .on_command_receive(command.as_ref())
                 //     .await?;
-                debug!(id = ?&command.data.id, "received application command");
-                if let Some(handler) = self.application_command_handlers.get(&command.data.id) {
+                debug!(id = ?&command.id, "received application command");
+                if let Some(handler) = self.application_command_handlers.get(&command.id) {
                     let data = Box::new(ApplicationCommandData {
                         command: *command.clone(),
                         id: Uuid::new_v4(),
+                        interaction: interaction.0.clone(),
                     });
-                    let fut = Box::pin(
-                        Self::execute_application_command(handler.clone(), data, self.utils.clone())
-                    );
+                    let fut = Box::pin(Self::execute_application_command(
+                        handler.clone(),
+                        data,
+                        self.utils.clone(),
+                    ));
                     return Ok(fut);
                 } else {
-                    error!(name = ?command.data.name,"No command handler found");
+                    error!(name = ?command.name,"No command handler found");
                     return Err(anyhow!("No such command handler found"));
                 }
             }
-            twilight_model::application::interaction::Interaction::ApplicationCommandAutocomplete(
-                _,
-            ) => debug!("Received autocomplete"),
-            Interaction::MessageComponent(message) => {
+            InteractionData::MessageComponent(message) => {
                 debug!("Received message component");
 
-                if let Some((handler_name, leftover)) = message.data.custom_id.split_once(':') {
+                if let Some((handler_name, leftover)) = message.custom_id.split_once(':') {
                     if let Some(handler) = self.component_handlers.get(handler_name) {
                         let data = Box::new(MessageComponentData {
-                            id:Uuid::new_v4(), message: *message.clone(), action: leftover.to_string() }
-                        );
+                            id: Uuid::new_v4(),
+                            message: message.clone(),
+                            action: leftover.to_string(),
+                            interaction: interaction.0.clone(),
+                        });
                         let handler = handler.clone();
                         let fut = Box::pin(async move { handler.process_component(data).await });
                         return Ok(fut);
                     } else {
-                        return Err(anyhow!("Invalid message component handler: {}", handler_name))
+                        return Err(anyhow!(
+                            "Invalid message component handler: {}",
+                            handler_name
+                        ));
                     }
                 } else {
-                    return Err(anyhow!("Message component custom_id does not match the format \"handler:action\""));
+                    return Err(anyhow!(
+                        "Message component custom_id does not match the format \"handler:action\""
+                    ));
                 }
             }
-            Interaction::ModalSubmit(_modal) => {
+            InteractionData::ModalSubmit(_modal) => {
                 debug!("Received modal");
             }
             _ => {
@@ -250,14 +267,14 @@ impl InteractionProcessor {
     async fn execute_application_command(
         handler: HandlerType,
         data: Box<ApplicationCommandData>,
-        utils: Arc<ApplicationCommandUtilities>,
+        utils: Arc<CommonUtilities>,
     ) -> anyhow::Result<()> {
         utils
             .http_client
             .interaction(utils.application_id)
             .create_response(
-                data.command.id,
-                data.command.token.as_str(),
+                data.interaction.id,
+                data.interaction.token.as_str(),
                 &InteractionResponse {
                     kind: InteractionResponseType::DeferredChannelMessageWithSource,
                     data: None,
@@ -266,8 +283,8 @@ impl InteractionProcessor {
             .exec()
             .await?;
 
-        let name = data.command.data.name.clone();
-        let token = data.command.token.clone();
+        let name = data.command.name.clone();
+        let token = data.interaction.token.clone();
         let runback_id = data.id;
         let timeout = timeout(
             Duration::from_secs(5),

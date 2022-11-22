@@ -31,6 +31,7 @@ services:
       # - redis
       - kafka
       - db
+    cpu_percent: 80
   
   pgadmin:
     image: dpage/pgadmin4
@@ -91,6 +92,8 @@ services:
   db:
     image: postgres:14
     restart: always
+    ports:
+      - 5432:5432
     volumes:
       - postgresql_data:/var/lib/postgresql/data
     environment:

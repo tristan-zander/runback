@@ -1,14 +1,15 @@
-use bot::entity::{matchmaking_settings, prelude::*};
+use bot::entity::prelude::*;
 use chrono::Utc;
-use sea_orm::{prelude::*, DatabaseConnection, Set};
+use sea_orm::{prelude::*, DatabaseConnection, IntoActiveModel, Set};
 use twilight_cache_inmemory::InMemoryCache;
 use twilight_model::{
+    application::interaction::Interaction,
     http::interaction::InteractionResponse,
     id::{
         marker::{ApplicationMarker, GuildMarker, UserMarker},
         Id,
     },
-    user::User,
+    user::{CurrentUser, User},
 };
 
 use twilight_http::{client::ClientBuilder, Client as DiscordHttpClient};
@@ -16,20 +17,19 @@ use twilight_standby::Standby;
 
 use std::sync::Arc;
 
-use twilight_model::application::interaction::ApplicationCommand as DiscordApplicationCommand;
-
 /// Contains any helper functions to help make writing application command handlers easier
 // Make sure this is thread safe
 #[derive(Debug)]
-pub struct ApplicationCommandUtilities {
+pub struct CommonUtilities {
     pub http_client: DiscordHttpClient,
     pub application_id: Id<ApplicationMarker>,
+    pub current_user: CurrentUser,
     pub db: Arc<Box<DatabaseConnection>>,
     pub cache: Arc<InMemoryCache>,
     pub standby: Arc<Standby>,
 }
 
-impl ApplicationCommandUtilities {
+impl CommonUtilities {
     pub async fn new(
         db: Arc<Box<DatabaseConnection>>,
         cache: Arc<InMemoryCache>,
@@ -44,17 +44,21 @@ impl ApplicationCommandUtilities {
             response.model().await?.id
         };
 
-        Ok(Self::new_with_application_id(
+        let current_user = http_client.current_user().exec().await?.model().await?;
+
+        Ok(Self::new_with_fields(
             db,
             application_id,
+            current_user,
             cache,
             standby,
         ))
     }
 
-    pub fn new_with_application_id(
+    pub fn new_with_fields(
         db: Arc<Box<DatabaseConnection>>,
         application_id: Id<ApplicationMarker>,
+        current_user: CurrentUser,
         cache: Arc<InMemoryCache>,
         standby: Arc<Standby>,
     ) -> Self {
@@ -66,6 +70,7 @@ impl ApplicationCommandUtilities {
             application_id,
             cache,
             standby,
+            current_user,
         }
     }
 
@@ -75,13 +80,13 @@ impl ApplicationCommandUtilities {
 
     pub async fn send_message(
         &self,
-        command: &DiscordApplicationCommand,
+        interaction: &Interaction,
         message: &InteractionResponse,
     ) -> anyhow::Result<()> {
         let res = self
             .http_client
             .interaction(self.application_id)
-            .create_response(command.id, command.token.as_str(), message)
+            .create_response(interaction.id, interaction.token.as_str(), message)
             .exec()
             .await?;
 
@@ -130,5 +135,27 @@ impl ApplicationCommandUtilities {
 
         let user = self.http_client.user(user).exec().await?.model().await?;
         Ok(user)
+    }
+
+    pub async fn find_or_create_user(&self, id: Id<UserMarker>) -> anyhow::Result<users::Model> {
+        let res = Users::find()
+            .filter(users::Column::DiscordUser.eq(IdWrapper::from(id)))
+            .one(self.db_ref())
+            .await?;
+
+        if let Some(user) = res {
+            Ok(user)
+        } else {
+            let user = users::Model {
+                user_id: Uuid::new_v4(),
+                discord_user: Some(id.into()),
+            };
+
+            let user = Users::insert(user.into_active_model())
+                .exec_with_returning(self.db_ref())
+                .await?;
+
+            return Ok(user);
+        }
     }
 }

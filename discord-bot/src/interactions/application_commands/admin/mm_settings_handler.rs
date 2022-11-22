@@ -5,9 +5,7 @@ use bot::entity::prelude::*;
 use chrono::Utc;
 use sea_orm::{ActiveModelTrait, EntityTrait, IntoActiveModel, Set};
 use twilight_model::{
-    application::interaction::{
-        application_command::CommandOptionValue, MessageComponentInteraction,
-    },
+    application::interaction::application_command::CommandOptionValue,
     channel::message::MessageFlags,
     guild::{PartialMember, Permissions},
     http::interaction::{InteractionResponse, InteractionResponseType},
@@ -19,12 +17,12 @@ use twilight_model::{
 use twilight_util::builder::InteractionResponseDataBuilder;
 
 use crate::interactions::application_commands::{
-    ApplicationCommandData, ApplicationCommandUtilities, CommandGroupDescriptor,
-    InteractionHandler, MessageComponentData,
+    ApplicationCommandData, CommandGroupDescriptor, CommonUtilities, InteractionHandler,
+    MessageComponentData,
 };
 
 pub struct MatchmakingSettingsHandler {
-    utils: Arc<ApplicationCommandUtilities>,
+    utils: Arc<CommonUtilities>,
 }
 
 #[async_trait]
@@ -49,11 +47,10 @@ impl InteractionHandler for MatchmakingSettingsHandler {
             }
         };
 
-        debug!(data = ?format!("{:?}", data.command.data));
+        debug!(data = ?format!("{:?}", data.command));
 
         let group = data
             .command
-            .data
             .options
             .into_iter()
             .next()
@@ -141,7 +138,7 @@ impl InteractionHandler for MatchmakingSettingsHandler {
                 self.utils
                     .http_client
                     .interaction(self.utils.application_id)
-                    .create_followup(data.command.token.as_str())
+                    .create_followup(data.interaction.token.as_str())
                     .content(message.as_str())?
                     .flags(MessageFlags::EPHEMERAL)
                     .exec()
@@ -188,7 +185,7 @@ impl InteractionHandler for MatchmakingSettingsHandler {
                 self.utils
                     .http_client
                     .interaction(self.utils.application_id)
-                    .create_followup(data.command.token.as_str())
+                    .create_followup(data.interaction.token.as_str())
                     .content(message.as_str())?
                     .flags(MessageFlags::EPHEMERAL)
                     .exec()
@@ -214,19 +211,16 @@ impl InteractionHandler for MatchmakingSettingsHandler {
     }
 
     async fn process_component(&self, data: Box<MessageComponentData>) -> anyhow::Result<()> {
-        let guild_id = data
-            .message
+        let msg =
+            data.interaction.message.as_ref().ok_or_else(|| {
+                anyhow!("no message attached to this message component interaction")
+            })?;
+
+        let guild_id = msg
             .guild_id
             .ok_or_else(|| anyhow!("you must run this command in a guild"))?;
 
-        let _user = data
-            .message
-            .user
-            .as_ref()
-            .ok_or_else(|| anyhow!("cannot get user data"))?;
-
-        let member = data
-            .message
+        let member = msg
             .member
             .as_ref()
             .ok_or_else(|| anyhow!("cannot get member data"))?;
@@ -240,14 +234,13 @@ impl InteractionHandler for MatchmakingSettingsHandler {
 
         match data.action.as_str() {
             "channel" => {
-                self.set_matchmaking_channel(&data.message).await?;
+                self.set_matchmaking_channel(&data).await?;
                 return Ok(());
             }
             "role" => {
                 // set the admin role for this guild
                 let role: Id<RoleMarker> = Id::new_checked(str::parse::<u64>(
                     data.message
-                        .data
                         .values
                         .iter()
                         .nth(0)
@@ -270,17 +263,13 @@ impl InteractionHandler for MatchmakingSettingsHandler {
 }
 
 impl MatchmakingSettingsHandler {
-    pub fn new(utils: Arc<ApplicationCommandUtilities>) -> Self {
+    pub fn new(utils: Arc<CommonUtilities>) -> Self {
         Self { utils }
     }
 
-    async fn set_matchmaking_channel(
-        &self,
-        component: &MessageComponentInteraction,
-    ) -> anyhow::Result<()> {
+    async fn set_matchmaking_channel(&self, data: &MessageComponentData) -> anyhow::Result<()> {
         let channel_id: Id<ChannelMarker> = Id::new(
-            component
-                .data
+            data.message
                 .values
                 .get(0)
                 .ok_or_else(|| anyhow!("No component values provided."))?
@@ -288,7 +277,8 @@ impl MatchmakingSettingsHandler {
                 .map_err(|e| anyhow!(e))?,
         );
 
-        let guild_id = component
+        let guild_id = data
+            .interaction
             .guild_id
             .ok_or_else(|| anyhow!("You cannot use Runback in a DM."))?;
 
@@ -320,7 +310,7 @@ impl MatchmakingSettingsHandler {
         let _message = InteractionResponse { kind: InteractionResponseType::UpdateMessage, data: Some(
             InteractionResponseDataBuilder::new()
                 .flags(MessageFlags::EPHEMERAL)
-                .content("Successfully set the matchmaking channel. Please wait a few moments for changes to take effect.".into())
+                .content("Successfully set the matchmaking channel. Please wait a few moments for changes to take effect.")
                 .build()
         )};
 
@@ -328,7 +318,7 @@ impl MatchmakingSettingsHandler {
             self.utils
             .http_client
             .interaction(self.utils.application_id)
-            .update_response(component.token.as_str())
+            .update_response(data.interaction.token.as_str())
             .content(Some("Successfully set the matchmaking channel. Please wait a few moments for changes to take effect"))?
             // .map_err(|e| RunbackError { message: "Could not set content for response message during set_matchmaking_channel()".to_owned(), inner: Some(Box::new(e)) })?
             // .(component.id, component.token.as_str(), &message)

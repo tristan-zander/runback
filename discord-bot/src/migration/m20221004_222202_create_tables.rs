@@ -4,6 +4,7 @@ use crate::entity::{
     sea_orm_active_enums::LobbyPrivacy,
     *,
 };
+use crate::migration::deprecated::*;
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
