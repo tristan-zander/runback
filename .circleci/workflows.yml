@@ -1,8 +1,5 @@
 version: 2.1
 
-orbs:
-  doctl: digitalocean/cli@0.1.1
-
 parameters:
   modified-root-manifest:
     type: boolean
@@ -38,13 +35,9 @@ workflows:
     jobs:
       - test-discord-bot
       # - coverage-discord-bot
-      - doctl/install_and_initialize_cli:
-          filters:
-            branches:
-              only: main
       - release-discord-bot:
           requires:
-            - doctl/install_and_initialize_cli
+            - test-discord-bot
           filters:
             branches:
               only: main
@@ -122,7 +115,7 @@ jobs:
 
       - run:
           name: Install Build Dependencies
-          command: apk add --no-cache bash openssl openssl-dev pkgconfig librdkafka cmake make gcc g++ openssh 'cargo>1.57'
+          command: apk add --no-cache bash curl openssl openssl-dev pkgconfig librdkafka cmake make gcc g++ openssh 'cargo>1.57'
 
       - setup_remote_docker
 
@@ -136,13 +129,23 @@ jobs:
           command: |
             npm install
             cargo install semantic-release-rust --version 1.0.0-alpha.8
-            cargo install cargo-workspaces --version ^0.2
+            cargo install cargo-workspaces --version 0.2.35
             echo 'export PATH=$PATH:~/.cargo/bin' >> $BASH_ENV
           working_directory: /tmp/app/discord-bot
       - save_cache:
           paths:
             - "/root/.cargo/"
           key: semantic-release-rust
+      
+      - run:
+          name: Install DigitalOcean CLI
+          command: |
+            mkdir -p ~/doctl
+            curl -L -o ~/doctl.tar.gz https://github.com/digitalocean/doctl/releases/download/v1.84.0/doctl-1.84.0-linux-amd64.tar.gz
+            tar xf ~/doctl.tar.gz -C ~/doctl
+            mv ~/doctl/* /usr/local/bin
+            doctl auth init -t $DIGITALOCEAN_ACCESS_TOKEN
+            doctl registry login
 
       - run:
           name: Run semantic-release
@@ -151,3 +154,4 @@ jobs:
             export PATH=$PATH:~/.cargo/bin
             npx semantic-release
           working_directory: /tmp/app/discord-bot
+
