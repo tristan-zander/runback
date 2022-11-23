@@ -8,9 +8,7 @@ use twilight_model::{
     application::{
         command::{BaseCommandOptionData, CommandOption, CommandType},
         component::{button::ButtonStyle, ActionRow, Button, Component},
-        interaction::{
-            application_command::{CommandDataOption, CommandOptionValue}
-        }
+        interaction::application_command::{CommandDataOption, CommandOptionValue},
     },
     channel::{
         message::{allowed_mentions::AllowedMentionsBuilder, MessageFlags},
@@ -27,7 +25,7 @@ use twilight_model::{
     user::User,
 };
 use twilight_util::builder::{
-    command::{CommandBuilder, SubCommandBuilder, IntegerBuilder},
+    command::{CommandBuilder, IntegerBuilder, SubCommandBuilder},
     embed::{EmbedBuilder, EmbedFieldBuilder},
     InteractionResponseDataBuilder,
 };
@@ -41,8 +39,9 @@ use futures::StreamExt;
 
 use std::{
     ops::Add,
+    os::unix::thread,
     sync::Arc,
-    time::{Duration, Instant}, os::unix::thread,
+    time::{Duration, Instant},
 };
 
 pub struct MatchmakingCommandHandler {
@@ -96,7 +95,10 @@ impl InteractionHandler for MatchmakingCommandHandler {
         // )
         .option(SubCommandBuilder::new("done", "Finish your matchmaking lobby").build())
         .option(
-            SubCommandBuilder::new("report-score".to_string(), "Report the score of a match".to_string())
+            SubCommandBuilder::new(
+                "report-score".to_string(),
+                "Report the score of a match".to_string(),
+            )
             .option(CommandOption::User(BaseCommandOptionData {
                 name: "opponent".to_string(),
                 description: "The user that you played against".to_string(),
@@ -108,13 +110,13 @@ impl InteractionHandler for MatchmakingCommandHandler {
                 IntegerBuilder::new("wins".to_string(), "The amount of games won".to_string())
                     .required(true)
                     .min_value(0)
-                    .max_value(100)
+                    .max_value(100),
             )
             .option(
                 IntegerBuilder::new("loses".to_string(), "The amount of games lost".to_string())
                     .required(true)
                     .min_value(0)
-                    .max_value(100)
+                    .max_value(100),
             )
             .build(),
         );
@@ -274,8 +276,8 @@ impl InteractionHandler for MatchmakingCommandHandler {
                     .filter(matchmaking_lobbies::Column::ChannelId.eq(IdWrapper::from(chan_id)))
                     .one(self.utils.db_ref())
                     .await?;
-                
-                if let None = lobby {
+
+                if lobby.is_none() {
                     return Err(anyhow!(
                         "You must run this command in a valid matchmaking thread."
                     ));
@@ -286,27 +288,20 @@ impl InteractionHandler for MatchmakingCommandHandler {
                     .command
                     .resolved
                     .ok_or_else(|| anyhow!("cannot get the resolved command user data"))?;
-                let opponent = resolved
-                    .users
-                    .values()
-                    .next()
-                    .ok_or_else(|| anyhow!("cannot get the user specified in \"report-score\" command"))?;
-                
-                let response = self.utils
-                    .http_client
-                    .channel(chan_id)
-                    .exec()
-                    .await?;
+                let opponent = resolved.users.values().next().ok_or_else(|| {
+                    anyhow!("cannot get the user specified in \"report-score\" command")
+                })?;
+
+                let response = self.utils.http_client.channel(chan_id).exec().await?;
 
                 if !response.status().is_success() {
                     return Err(anyhow!("failed to get thread"));
                 }
 
-                let channel:Channel = response
-                    .model()
-                    .await?;
+                let channel: Channel = response.model().await?;
 
-                let thread_members:Vec<ThreadMember> = self.utils
+                let thread_members: Vec<ThreadMember> = self
+                    .utils
                     .http_client
                     .thread_members(channel.id)
                     .exec()
@@ -314,11 +309,13 @@ impl InteractionHandler for MatchmakingCommandHandler {
                     .models()
                     .await?;
 
-                let mut reporter_is_member:bool = false;
-                let mut opponent_is_member:bool = false;
-                
+                let mut reporter_is_member: bool = false;
+                let mut opponent_is_member: bool = false;
+
                 for member in thread_members {
-                    let member_user_id = member.user_id.ok_or_else(|| anyhow!("cannot get the user specified in \"report-score\" command"))?;
+                    let member_user_id = member.user_id.ok_or_else(|| {
+                        anyhow!("cannot get the user specified in \"report-score\" command")
+                    })?;
                     if user.id == member_user_id {
                         reporter_is_member = true;
                     } else if opponent.id == member_user_id {
@@ -335,10 +332,10 @@ impl InteractionHandler for MatchmakingCommandHandler {
                     return Err(anyhow!("opponent isn't part of the lobby"));
                 }
 
-                let options:Vec<CommandDataOption>;
+                let options: Vec<CommandDataOption>;
                 match subcommand.value.clone() {
                     CommandOptionValue::SubCommand(x) => options = x,
-                    _ => options = Vec::<CommandDataOption>::new()
+                    _ => options = Vec::<CommandDataOption>::new(),
                 }
 
                 let wins_option_value = options
@@ -346,24 +343,22 @@ impl InteractionHandler for MatchmakingCommandHandler {
                     .ok_or_else(|| anyhow!("could not get wins option"))?
                     .value
                     .clone();
-                
+
                 let loses_option_value = options
                     .get(2)
                     .ok_or_else(|| anyhow!("could not get loses option"))?
                     .value
                     .clone();
-                
-                let wins;
-                match wins_option_value {
+
+                let wins: i64 = match wins_option_value {
                     CommandOptionValue::Integer(x) => wins = x as i64,
-                    _ => wins = 0
-                }
-                
-                let loses;
-                match loses_option_value {
+                    _ => wins = 0 as i64,
+                };
+
+                let loses: i64 = match loses_option_value {
                     CommandOptionValue::Integer(x) => loses = x as i64,
-                    _ => loses = 0
-                }
+                    _ => loses = 0 as i64,
+                };
 
                 // TODO: Refactor all this message stuff to reusable functions with parameters?
                 // TODO: Add an embed with options for the opponent to accept or dispute the score report.
@@ -397,10 +392,7 @@ impl InteractionHandler for MatchmakingCommandHandler {
                     .content(format!("Sent a score report in <#{}>", channel).as_str())?
                     .embeds(&[EmbedBuilder::new()
                         .title("New score report")
-                        .description(format!(
-                            "{:?} - {:?}",
-                            wins, loses
-                        ))
+                        .description(format!("{:?} - {:?}", wins, loses))
                         .validate()?
                         .build()])?
                     .flags(MessageFlags::EPHEMERAL)
@@ -408,7 +400,7 @@ impl InteractionHandler for MatchmakingCommandHandler {
                     .await?
                     .model()
                     .await?;
-                
+
                 return Ok(());
             }
             "done" => {
