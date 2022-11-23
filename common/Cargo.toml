@@ -5,22 +5,12 @@ edition = "2021"
 publish = false
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-[features]
-orm = ["sea-orm"]
-# TODO: Make features for common utilities
 
 [dependencies]
-sea-orm = { version = "^0.9", features = [
-    "sqlx-postgres",
-    "runtime-tokio-rustls",
-    "macros",
-], default-features = false, optional = true }
 reqwest = "^0.11"
-openidconnect = "2.2.0"
 serde = "~1.0"
 tracing = "~0.1"
 tracing-subscriber = { version = "^0.3", features = ["json"] }
-tracing-log = "^0.1"
 dashmap = "^5"
 anyhow = "~1.0"
 async-trait = "~0.1"
