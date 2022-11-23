@@ -152,6 +152,7 @@ impl MigrationTrait for Migration {
                 Table::alter()
                     .table(MatchmakingLobbies)
                     .drop_column(matchmaking_lobbies::Column::EndedAt)
+                    .drop_column(matchmaking_lobbies::Column::TimeoutWarningMessage)
                     .to_owned(),
             )
             .await?;
