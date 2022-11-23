@@ -22,6 +22,7 @@ use twilight_model::{
     },
     channel::message::MessageFlags,
     http::interaction::{InteractionResponse, InteractionResponseType},
+    id::marker::GuildMarker,
 };
 use twilight_util::builder::command::{CommandBuilder, StringBuilder};
 use twilight_util::builder::embed::{EmbedBuilder, EmbedFieldBuilder};
@@ -53,7 +54,7 @@ pub struct ApplicationCommandData {
     pub interaction: Interaction,
     pub command: CommandData,
     pub id: Uuid,
-    // pub cancellation_token
+    pub guild_id: Id<GuildMarker>, // pub cancellation_token
 }
 
 #[derive(Debug)]
