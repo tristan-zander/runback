@@ -40,13 +40,6 @@ impl InteractionHandler for MatchmakingSettingsHandler {
     async fn process_command(&self, data: Box<ApplicationCommandData>) -> anyhow::Result<()> {
         let command = &data.command;
         // VERIFY: Is it possible that we can send the information of other guilds here?
-        let _guild_id = match command.guild_id {
-            Some(id) => id,
-            None => {
-                return Err(anyhow!("Can't find a guild id for this command."));
-            }
-        };
-
         debug!(data = ?format!("{:?}", data.command));
 
         let group = data
@@ -90,14 +83,7 @@ impl InteractionHandler for MatchmakingSettingsHandler {
         match subcommand.name.as_str() {
             "matchmaking-channel" => {
                 // Creates the guild settings object if it doens't exist
-                let settings = self
-                    .utils
-                    .get_guild_settings(
-                        data.command
-                            .guild_id
-                            .ok_or_else(|| anyhow!("this command cannot be used in a DM"))?,
-                    )
-                    .await?;
+                let settings = self.utils.get_guild_settings(data.guild_id).await?;
 
                 let mut model = matchmaking_settings::ActiveModel {
                     guild_id: Set(settings.guild_id),
@@ -146,10 +132,7 @@ impl InteractionHandler for MatchmakingSettingsHandler {
             }
             "admin-role" => {
                 // Creates the guild settings object if it doens't exist
-                let settings = self
-                    .utils
-                    .get_guild_settings(data.command.guild_id.unwrap())
-                    .await?;
+                let settings = self.utils.get_guild_settings(data.guild_id).await?;
 
                 let mut model = matchmaking_settings::ActiveModel {
                     guild_id: Set(settings.guild_id),

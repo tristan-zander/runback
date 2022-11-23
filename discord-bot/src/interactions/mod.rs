@@ -214,6 +214,9 @@ impl InteractionProcessor {
                         command: *command.clone(),
                         id: Uuid::new_v4(),
                         interaction: interaction.0.clone(),
+                        guild_id: interaction
+                            .guild_id
+                            .ok_or_else(|| anyhow!("you must run this command in a valid guild"))?,
                     });
                     let fut = Box::pin(Self::execute_application_command(
                         handler.clone(),
