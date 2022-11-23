@@ -139,14 +139,7 @@ impl InteractionHandler for MatchmakingCommandHandler {
                     return Err(anyhow!("you cannot invite yourself"));
                 }
 
-                let guild_settings = self
-                    .utils
-                    .get_guild_settings(
-                        data.command
-                            .guild_id
-                            .ok_or_else(|| anyhow!("command cannot be used in a DM"))?,
-                    )
-                    .await?;
+                let guild_settings = self.utils.get_guild_settings(data.guild_id).await?;
 
                 let channel;
                 if let Some(cid) = guild_settings.channel_id {
