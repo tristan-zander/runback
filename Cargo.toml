@@ -1,2 +1,2 @@
 [workspace]
-members = ["discord-bot", "matchmaking-service", "common"]
+members = ["discord-bot", "common"]

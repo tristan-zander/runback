@@ -64,7 +64,6 @@ futures = "0.3.19"
 async-trait = "0.1.53"
 tracing = "0.1.29"
 tracing-subscriber = { version = "*", features = ["json"] }
-rdkafka = { version = "0.28.0", features = ["cmake-build"] }
 # Twilight.rs
 twilight-cache-inmemory = "0.13.1"
 twilight-gateway = "0.13.3"
