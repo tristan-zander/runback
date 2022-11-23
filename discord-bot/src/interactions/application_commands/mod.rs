@@ -22,7 +22,7 @@ use twilight_model::{
     },
     channel::message::MessageFlags,
     http::interaction::{InteractionResponse, InteractionResponseType},
-    id::marker::GuildMarker,
+    id::{marker::GuildMarker, Id},
 };
 use twilight_util::builder::command::{CommandBuilder, StringBuilder};
 use twilight_util::builder::embed::{EmbedBuilder, EmbedFieldBuilder};
