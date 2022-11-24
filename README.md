@@ -12,7 +12,7 @@ docker-compose -f docker-compose.development.yml up discord-bot
 ```
 The development environment will have access to your entire working directory through a Docker volume. Production deployments will only be able to access their subfolder and any dependencies, so make sure that you also test any code modifications under the Production environment as well.
 
-### Discord Bot
+### Discord Bot Setup
 The following scopes need to be given to your development bot:
 - `bot`
 - `application.commands`
@@ -28,3 +28,5 @@ The following bot permissions need to be added to your development bot:
 - Read Message History
 - Add Reactions
 - Use Slash Commands
+
+Additionally, you need to grant your bot Privileged Gateway Intents for `GUILD_MEMBERS`, which is available at your bot's settings.
