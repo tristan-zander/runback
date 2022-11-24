@@ -344,13 +344,13 @@ impl InteractionHandler for MatchmakingCommandHandler {
                     .clone();
 
                 let wins: i64 = match wins_option_value {
-                    CommandOptionValue::Integer(x) => wins = x as i64,
-                    _ => wins = 0 as i64,
+                    CommandOptionValue::Integer(x) => x as i64,
+                    _ => 0 as i64,
                 };
 
                 let loses: i64 = match loses_option_value {
-                    CommandOptionValue::Integer(x) => loses = x as i64,
-                    _ => loses = 0 as i64,
+                    CommandOptionValue::Integer(x) => x as i64,
+                    _ => 0 as i64,
                 };
 
                 // TODO: Refactor all this message stuff to reusable functions with parameters?
