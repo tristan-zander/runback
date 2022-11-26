@@ -7,6 +7,7 @@ use sea_orm::{prelude::*, IntoActiveModel, Set};
 use twilight_model::{
     application::{command::CommandType, interaction::application_command::CommandOptionValue},
     channel::message::MessageFlags,
+    guild::Permissions,
     http::interaction::{InteractionResponse, InteractionResponseType},
 };
 use twilight_util::builder::command::{CommandBuilder, StringBuilder};
@@ -27,12 +28,15 @@ pub struct EulaCommandHandler {
 #[async_trait]
 impl InteractionHandler for EulaCommandHandler {
     fn describe(&self) -> CommandGroupDescriptor {
-        let builder = CommandBuilder::new("eula", "Show the EULA", CommandType::ChatInput).option(
-            StringBuilder::new("accept", "Accept the EULA (admin only)").choices(vec![(
-                "I have read the EULA and agree to its terms.",
-                "accept",
-            )]),
-        );
+        let builder = CommandBuilder::new("eula", "Show the EULA", CommandType::ChatInput)
+            .dm_permission(false)
+            .default_member_permissions(Permissions::MANAGE_GUILD)
+            .option(
+                StringBuilder::new("accept", "Accept the EULA (admin only)").choices(vec![(
+                    "I have read the EULA and agree to its terms.",
+                    "accept",
+                )]),
+            );
 
         let command = builder.build();
         CommandGroupDescriptor {

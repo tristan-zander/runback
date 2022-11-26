@@ -29,7 +29,7 @@ use crate::interactions::application_commands::{
 
 use self::application_commands::{
     admin::admin_handler::AdminCommandHandler, matchmaking::MatchmakingCommandHandler,
-    CommandGroupDescriptor, InteractionHandler, PingCommandHandler,
+    CommandGroupDescriptor, InteractionHandler,
 };
 
 type HandlerType = Arc<Box<dyn InteractionHandler + Send + Sync + 'static>>;
@@ -54,9 +54,6 @@ impl InteractionProcessor {
         event!(Level::INFO, "Registering top-level command handlers");
 
         let top_level_handlers: Vec<Arc<Box<dyn InteractionHandler + Send + Sync + 'static>>> = vec![
-            Arc::new(Box::new(PingCommandHandler {
-                utils: utils.clone(),
-            })),
             Arc::new(Box::new(AdminCommandHandler::new(utils.clone()))),
             Arc::new(Box::new(MatchmakingCommandHandler::new(utils.clone()))),
             // Arc::new(Box::new(EulaCommandHandler::new(utils.clone()))),
