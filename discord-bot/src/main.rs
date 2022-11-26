@@ -29,7 +29,10 @@ use twilight_cache_inmemory::{InMemoryCache, ResourceType};
 use twilight_gateway::{Cluster, Intents};
 use twilight_standby::Standby;
 
-use twilight_model::gateway::{event::Event, payload::incoming::ChannelDelete};
+use twilight_model::gateway::{
+    event::Event,
+    payload::incoming::{ChannelDelete, RoleDelete},
+};
 
 use crate::interactions::{application_commands::CommonUtilities, InteractionProcessor};
 
@@ -171,6 +174,9 @@ async fn entrypoint() -> anyhow::Result<()> {
                     Event::ChannelDelete(chan_delete) => {
                         executing_futures.push(Box::pin(process_channel_delete(utils.clone(), chan_delete)));
                     }
+                    Event::RoleDelete(role_delete) => {
+                        executing_futures.push(Box::pin(process_role_delete(utils.clone(), role_delete)));
+                    }
                     Event::GatewayHeartbeatAck => {
                         trace!("gateway acked heartbeat");
                     }
@@ -269,6 +275,54 @@ async fn process_channel_delete(
         // TODO: Notify the guild owner that they need to set a new matchmaking channel.
 
         info!(channel = ?chan_id, guild = ?guild_id, "removed default matchmaking channel because it was deleted");
+    } else {
+        debug!("not a registered guild");
+    }
+
+    Ok(())
+}
+
+#[instrument(skip_all)]
+async fn process_role_delete(
+    utils: Arc<CommonUtilities>,
+    role_delete: RoleDelete,
+) -> anyhow::Result<()> {
+    use bot::entity::prelude::*;
+    let role_id = role_delete.role_id;
+    let guild_id = role_delete.guild_id;
+
+    let settings = MatchmakingSettings::find()
+        .filter(matchmaking_settings::Column::GuildId.eq(IdWrapper::from(guild_id)))
+        .one(utils.db_ref())
+        .await?;
+
+    if let Some(settings) = settings {
+        if settings
+            .admin_role
+            .and_then(|v| {
+                if v.into_id() == role_id {
+                    Some(v)
+                } else {
+                    None
+                }
+            })
+            .is_none()
+        {
+            debug!("role was not the admin role");
+            return Ok(());
+        }
+
+        MatchmakingSettings::update(matchmaking_settings::ActiveModel {
+            guild_id: Set(settings.guild_id),
+            channel_id: Set(None),
+            ..Default::default()
+        })
+        .exec(utils.db_ref())
+        .await?;
+
+        // TODO: Notify the guild owner that they need to set a new admin role.
+
+        info!(role = ?role_id, guild = ?guild_id, "removed admin role because it was deleted");
     } else {
         debug!("not a registered guild");
     }
