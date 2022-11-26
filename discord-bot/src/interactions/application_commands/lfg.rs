@@ -37,6 +37,7 @@ impl InteractionHandler for LfgCommandHandler {
             "Look for games in the server".to_string(),
             CommandType::ChatInput,
         )
+        .dm_permission(false)
         .option(CommandOption::Integer(NumberCommandOptionData {
             autocomplete: false,
             choices: vec![
