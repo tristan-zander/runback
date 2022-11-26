@@ -43,14 +43,7 @@ pub struct InteractionProcessor {
 }
 
 impl InteractionProcessor {
-    pub async fn init(
-        db: Arc<Box<DatabaseConnection>>,
-        cache: Arc<InMemoryCache>,
-        standby: Arc<Standby>,
-    ) -> anyhow::Result<Self> {
-        let utils = Arc::new(CommonUtilities::new(db, cache, standby).await?);
-        // let lfg_sessions = Arc::new(DashMap::new());
-
+    pub async fn init(utils: Arc<CommonUtilities>) -> anyhow::Result<Self> {
         event!(Level::INFO, "Registering top-level command handlers");
 
         let top_level_handlers: Vec<Arc<Box<dyn InteractionHandler + Send + Sync + 'static>>> = vec![
