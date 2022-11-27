@@ -186,7 +186,6 @@ impl InteractionHandler for MatchmakingCommandHandler {
                     .utils
                     .http_client
                     .create_message(channel)
-                    .content(format!("<@{}>", invited.id).as_str())?
                     .embeds(&[EmbedBuilder::new()
                         .title("New matchmaking request")
                         .description(format!(
@@ -360,17 +359,10 @@ impl InteractionHandler for MatchmakingCommandHandler {
                 //       And show the wins for both of them in a nice looking way.
                 let guild_settings = self
                     .utils
-                    .get_guild_settings(
-                        data.command
-                            .guild_id
-                            .ok_or_else(|| anyhow!("command cannot be used in a DM"))?,
-                    )
+                    .get_guild_settings(data.guild_id)
                     .await?;
                 let channel;
                 if let Some(cid) = guild_settings.channel_id {
-                    //
-                    // TODO: make sure that the channel actually exists.
-                    //
                     channel = cid.into_id();
                 } else {
                     channel = data
@@ -378,18 +370,43 @@ impl InteractionHandler for MatchmakingCommandHandler {
                         .channel_id
                         .ok_or_else(|| anyhow!("command was not run in a channel"))?;
                 }
-                let _followup = self
+                let msg = self
                     .utils
                     .http_client
                     .interaction(self.utils.application_id)
                     .create_followup(data.interaction.token.as_str())
-                    .content(format!("Sent a score report in <#{}>", channel).as_str())?
                     .embeds(&[EmbedBuilder::new()
                         .title("New score report")
-                        .description(format!("{:?} - {:?}", wins, loses))
+                        .description(format!("<@{}> vs <@{}>.", user.id, opponent.id))
+                        .field(EmbedFieldBuilder::new(&user.name, wins.to_string()).inline())
+                        .field(EmbedFieldBuilder::new(&opponent.name, loses.to_string()).inline())
                         .validate()?
                         .build()])?
-                    .flags(MessageFlags::EPHEMERAL)
+                    .components(&[Component::ActionRow(ActionRow {
+                        components: vec![
+                            Component::Button(Button {
+                                custom_id: Some("matchmaking:accept-score-report".to_string()),
+                                disabled: false,
+                                emoji: None,
+                                label: Some("Accept".to_string()),
+                                style: ButtonStyle::Primary,
+                                url: None,
+                            }),
+                            Component::Button(Button {
+                                custom_id: Some("matchmaking:deny-score-report".to_string()),
+                                disabled: false,
+                                emoji: None,
+                                label: Some("Deny".to_string()),
+                                style: ButtonStyle::Danger,
+                                url: None,
+                            }),
+                        ],
+                    })])?
+                    .allowed_mentions(Some(
+                        &AllowedMentionsBuilder::new()
+                            .user_ids([user.id, opponent.id])
+                            .build(),
+                    ))
                     .exec()
                     .await?
                     .model()
