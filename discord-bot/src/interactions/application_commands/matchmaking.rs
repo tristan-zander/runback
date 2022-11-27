@@ -16,7 +16,7 @@ use twilight_model::{
         Channel, ChannelType, Message,
     },
     gateway::payload::incoming::ChannelDelete,
-    guild::{Guild, Member},
+    guild::{Guild, Member, Permissions},
     http::interaction::{InteractionResponse, InteractionResponseType},
     id::{
         marker::{ChannelMarker, GuildMarker, MessageMarker, UserMarker},
@@ -57,6 +57,7 @@ impl InteractionHandler for MatchmakingCommandHandler {
             "Matchmaking commands".to_string(),
             CommandType::ChatInput,
         )
+        .dm_permission(false)
         .option(
             SubCommandBuilder::new(
                 "play-against".to_string(),

@@ -11,7 +11,10 @@ extern crate async_trait;
 #[macro_use]
 extern crate tokio;
 
-use bot::entity::sea_orm::{ConnectOptions, Database, DatabaseConnection};
+use bot::entity::{
+    sea_orm::{ConnectOptions, Database, DatabaseConnection},
+    IdWrapper,
+};
 use config::Config;
 use error::RunbackError;
 use futures::{
@@ -26,9 +29,12 @@ use twilight_cache_inmemory::{InMemoryCache, ResourceType};
 use twilight_gateway::{Cluster, Intents};
 use twilight_standby::Standby;
 
-use twilight_model::gateway::event::Event;
+use twilight_model::gateway::{
+    event::Event,
+    payload::incoming::{ChannelDelete, RoleDelete},
+};
 
-use crate::interactions::InteractionProcessor;
+use crate::interactions::{application_commands::CommonUtilities, InteractionProcessor};
 
 mod client;
 mod config;
@@ -89,13 +95,11 @@ async fn entrypoint() -> anyhow::Result<()> {
 
     let standby = Arc::new(Standby::new());
 
-    let interactions = Arc::new(
-        InteractionProcessor::init(db.clone(), cache.clone(), standby.clone())
-            .await
-            .map_err(|e| -> anyhow::Error {
-                anyhow!("Could not create interaction command handler: {}", e)
-            })?,
-    ); // Register guild commands
+    let utils = Arc::new(CommonUtilities::new(db.clone(), cache.clone(), standby.clone()).await?);
+
+    let interactions = Arc::new(InteractionProcessor::init(utils.clone()).await.map_err(
+        |e| -> anyhow::Error { anyhow!("Could not create interaction command handler: {}", e) },
+    )?); // Register guild commands
     info!("Registered guild commands");
 
     // This is the default scheme. It will automatically create as many
@@ -103,7 +107,7 @@ async fn entrypoint() -> anyhow::Result<()> {
     // let scheme = ShardScheme::Bucket { bucket_id: (), concurrency: (), total: () };
 
     // Use intents to only receive guild message events.
-    let (cluster, mut events) = Cluster::builder(CONFIG.token.clone(), Intents::GUILD_MESSAGES)
+    let (cluster, mut events) = Cluster::builder(CONFIG.token.clone(), Intents::GUILDS)
         .build()
         .await?;
     let cluster = Arc::new(cluster);
@@ -167,6 +171,12 @@ async fn entrypoint() -> anyhow::Result<()> {
                             },
                         }
                     }
+                    Event::ChannelDelete(chan_delete) => {
+                        executing_futures.push(Box::pin(process_channel_delete(utils.clone(), chan_delete)));
+                    }
+                    Event::RoleDelete(role_delete) => {
+                        executing_futures.push(Box::pin(process_role_delete(utils.clone(), role_delete)));
+                    }
                     Event::GatewayHeartbeatAck => {
                         trace!("gateway acked heartbeat");
                     }
@@ -214,6 +224,107 @@ async fn entrypoint() -> anyhow::Result<()> {
                 .exec()
                 .await?;
         }
+    }
+
+    Ok(())
+}
+
+#[instrument(skip_all)]
+async fn process_channel_delete(
+    utils: Arc<CommonUtilities>,
+    chan_delete: Box<ChannelDelete>,
+) -> anyhow::Result<()> {
+    use bot::entity::prelude::*;
+    let chan_id = chan_delete.id;
+    let guild_id = if let Some(gid) = chan_delete.guild_id {
+        gid
+    } else {
+        warn!(channel = ?chan_id, "received channel delete event without receiving the corresponding guild.");
+        return Err(anyhow!(""));
+    };
+
+    let settings = MatchmakingSettings::find()
+        .filter(matchmaking_settings::Column::GuildId.eq(IdWrapper::from(guild_id)))
+        .one(utils.db_ref())
+        .await?;
+
+    if let Some(settings) = settings {
+        if settings
+            .channel_id
+            .and_then(|v| {
+                if v.into_id() == chan_id {
+                    Some(v)
+                } else {
+                    None
+                }
+            })
+            .is_none()
+        {
+            debug!("channel was not the default matchmaking channel");
+            return Ok(());
+        }
+
+        MatchmakingSettings::update(matchmaking_settings::ActiveModel {
+            guild_id: Set(settings.guild_id),
+            channel_id: Set(None),
+            ..Default::default()
+        })
+        .exec(utils.db_ref())
+        .await?;
+
+        // TODO: Notify the guild owner that they need to set a new matchmaking channel.
+
+        info!(channel = ?chan_id, guild = ?guild_id, "removed default matchmaking channel because it was deleted");
+    } else {
+        debug!("not a registered guild");
+    }
+
+    Ok(())
+}
+
+#[instrument(skip_all)]
+async fn process_role_delete(
+    utils: Arc<CommonUtilities>,
+    role_delete: RoleDelete,
+) -> anyhow::Result<()> {
+    use bot::entity::prelude::*;
+    let role_id = role_delete.role_id;
+    let guild_id = role_delete.guild_id;
+
+    let settings = MatchmakingSettings::find()
+        .filter(matchmaking_settings::Column::GuildId.eq(IdWrapper::from(guild_id)))
+        .one(utils.db_ref())
+        .await?;
+
+    if let Some(settings) = settings {
+        if settings
+            .admin_role
+            .and_then(|v| {
+                if v.into_id() == role_id {
+                    Some(v)
+                } else {
+                    None
+                }
+            })
+            .is_none()
+        {
+            debug!("role was not the admin role");
+            return Ok(());
+        }
+
+        MatchmakingSettings::update(matchmaking_settings::ActiveModel {
+            guild_id: Set(settings.guild_id),
+            channel_id: Set(None),
+            ..Default::default()
+        })
+        .exec(utils.db_ref())
+        .await?;
+
+        // TODO: Notify the guild owner that they need to set a new admin role.
+
+        info!(role = ?role_id, guild = ?guild_id, "removed admin role because it was deleted");
+    } else {
+        debug!("not a registered guild");
     }
 
     Ok(())

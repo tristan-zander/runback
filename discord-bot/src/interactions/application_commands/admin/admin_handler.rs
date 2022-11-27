@@ -4,6 +4,7 @@ use twilight_model::application::command::{
     BaseCommandOptionData, ChannelCommandOptionData, CommandOption, CommandType,
 };
 use twilight_model::channel::ChannelType;
+use twilight_model::guild::Permissions;
 use twilight_util::builder::command::{CommandBuilder, SubCommandBuilder, SubCommandGroupBuilder};
 
 use crate::interactions::application_commands::{
@@ -28,6 +29,8 @@ impl InteractionHandler for AdminCommandHandler {
             "Admin configuration and management settings",
             CommandType::ChatInput,
         )
+        .dm_permission(false)
+        .default_member_permissions(Permissions::MANAGE_GUILD)
         // .option(SubCommandBuilder::new(
         //     "matchmaking-panels".into(),
         //     "Add, edit, and remove matchmaking panels in your guild".into(),

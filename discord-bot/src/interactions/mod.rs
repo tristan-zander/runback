@@ -29,7 +29,7 @@ use crate::interactions::application_commands::{
 
 use self::application_commands::{
     admin::admin_handler::AdminCommandHandler, matchmaking::MatchmakingCommandHandler,
-    CommandGroupDescriptor, InteractionHandler, PingCommandHandler,
+    CommandGroupDescriptor, InteractionHandler,
 };
 
 type HandlerType = Arc<Box<dyn InteractionHandler + Send + Sync + 'static>>;
@@ -43,20 +43,10 @@ pub struct InteractionProcessor {
 }
 
 impl InteractionProcessor {
-    pub async fn init(
-        db: Arc<Box<DatabaseConnection>>,
-        cache: Arc<InMemoryCache>,
-        standby: Arc<Standby>,
-    ) -> anyhow::Result<Self> {
-        let utils = Arc::new(CommonUtilities::new(db, cache, standby).await?);
-        // let lfg_sessions = Arc::new(DashMap::new());
-
+    pub async fn init(utils: Arc<CommonUtilities>) -> anyhow::Result<Self> {
         event!(Level::INFO, "Registering top-level command handlers");
 
         let top_level_handlers: Vec<Arc<Box<dyn InteractionHandler + Send + Sync + 'static>>> = vec![
-            Arc::new(Box::new(PingCommandHandler {
-                utils: utils.clone(),
-            })),
             Arc::new(Box::new(AdminCommandHandler::new(utils.clone()))),
             Arc::new(Box::new(MatchmakingCommandHandler::new(utils.clone()))),
             // Arc::new(Box::new(EulaCommandHandler::new(utils.clone()))),
