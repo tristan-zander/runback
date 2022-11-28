@@ -357,10 +357,7 @@ impl InteractionHandler for MatchmakingCommandHandler {
                 // TODO: Add an embed with options for the opponent to accept or dispute the score report.
                 // TODO: Format the message so it tags both the User & Opponent.
                 //       And show the wins for both of them in a nice looking way.
-                let guild_settings = self
-                    .utils
-                    .get_guild_settings(data.guild_id)
-                    .await?;
+                let guild_settings = self.utils.get_guild_settings(data.guild_id).await?;
                 let channel;
                 if let Some(cid) = guild_settings.channel_id {
                     channel = cid.into_id();
