@@ -375,9 +375,10 @@ impl InteractionHandler for MatchmakingCommandHandler {
                     .http_client
                     .interaction(self.utils.application_id)
                     .create_followup(data.interaction.token.as_str())
+                    .content(format!("**<@{}> vs <@{}>**", user.id, opponent.id).as_str())?
                     .embeds(&[EmbedBuilder::new()
-                        .title("New score report")
-                        .description(format!("<@{}> vs <@{}>.", user.id, opponent.id))
+                        .title("Score report")
+                        .description("If the reported score is correct press the Accept button, if not you can press the Dispute button to resolve the conflict.")
                         .field(EmbedFieldBuilder::new(&user.name, wins.to_string()).inline())
                         .field(EmbedFieldBuilder::new(&opponent.name, loses.to_string()).inline())
                         .validate()?
@@ -396,7 +397,7 @@ impl InteractionHandler for MatchmakingCommandHandler {
                                 custom_id: Some("matchmaking:deny-score-report".to_string()),
                                 disabled: false,
                                 emoji: None,
-                                label: Some("Deny".to_string()),
+                                label: Some("Dispute".to_string()),
                                 style: ButtonStyle::Danger,
                                 url: None,
                             }),
