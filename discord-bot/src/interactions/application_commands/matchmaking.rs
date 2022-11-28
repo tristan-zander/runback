@@ -3,14 +3,16 @@ use chrono::{DateTime, FixedOffset, Utc};
 use sea_orm::{prelude::*, IntoActiveModel, Set};
 use tokio::task::JoinHandle;
 use twilight_gateway::Event;
+use twilight_http::response::marker::ListBody;
 use twilight_model::{
     application::{
         command::{BaseCommandOptionData, CommandOption, CommandType},
         component::{button::ButtonStyle, ActionRow, Button, Component},
+        interaction::application_command::{CommandDataOption, CommandOptionValue},
     },
     channel::{
         message::{allowed_mentions::AllowedMentionsBuilder, MessageFlags},
-        thread::AutoArchiveDuration,
+        thread::{AutoArchiveDuration, ThreadMember},
         Channel, ChannelType, Message,
     },
     gateway::payload::incoming::ChannelDelete,
@@ -23,7 +25,7 @@ use twilight_model::{
     user::User,
 };
 use twilight_util::builder::{
-    command::{CommandBuilder, SubCommandBuilder},
+    command::{CommandBuilder, IntegerBuilder, SubCommandBuilder},
     embed::{EmbedBuilder, EmbedFieldBuilder},
     InteractionResponseDataBuilder,
 };
@@ -37,6 +39,7 @@ use futures::StreamExt;
 
 use std::{
     ops::Add,
+    os::unix::thread,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -92,7 +95,32 @@ impl InteractionHandler for MatchmakingCommandHandler {
         //     .build(),
         // )
         .option(SubCommandBuilder::new("done", "Finish your matchmaking lobby").build())
-        .option(SubCommandBuilder::new("report-score", "Report the score of a match").build());
+        .option(
+            SubCommandBuilder::new(
+                "report-score".to_string(),
+                "Report the score of a match".to_string(),
+            )
+            .option(CommandOption::User(BaseCommandOptionData {
+                name: "opponent".to_string(),
+                description: "The user that you played against".to_string(),
+                description_localizations: None,
+                name_localizations: None,
+                required: true,
+            }))
+            .option(
+                IntegerBuilder::new("wins".to_string(), "The amount of games won".to_string())
+                    .required(true)
+                    .min_value(0)
+                    .max_value(100),
+            )
+            .option(
+                IntegerBuilder::new("loses".to_string(), "The amount of games lost".to_string())
+                    .required(true)
+                    .min_value(0)
+                    .max_value(100),
+            )
+            .build(),
+        );
 
         let command = builder.build();
         CommandGroupDescriptor {
@@ -117,16 +145,17 @@ impl InteractionHandler for MatchmakingCommandHandler {
             .user
             .ok_or_else(|| anyhow!("could not get user data for caller"))?;
 
-        let action = data
+        let subcommand = data
             .command
             .options
             .get(0)
-            .ok_or_else(|| anyhow!("could not get subcommand option"))?
-            .name
-            .clone();
+            .ok_or_else(|| anyhow!("could not get subcommand option"))?;
+
+        let action = subcommand.name.clone();
 
         match action.as_str() {
             "play-against" => {
+                // TODO: Refactor get resolved user from app command data to a function.
                 let resolved = data
                     .command
                     .resolved
@@ -157,7 +186,6 @@ impl InteractionHandler for MatchmakingCommandHandler {
                     .utils
                     .http_client
                     .create_message(channel)
-                    .content(format!("<@{}>", invited.id).as_str())?
                     .embeds(&[EmbedBuilder::new()
                         .title("New matchmaking request")
                         .description(format!(
@@ -227,6 +255,159 @@ impl InteractionHandler for MatchmakingCommandHandler {
 
                 MatchmakingInvitation::insert(invitation.into_active_model())
                     .exec(self.utils.db_ref())
+                    .await?;
+
+                return Ok(());
+            }
+            "report-score" => {
+                let chan_id = data
+                    .interaction
+                    .channel_id
+                    .ok_or_else(|| anyhow!("command was not run in a channel"))?;
+
+                let lobby = MatchmakingLobbies::find()
+                    .filter(matchmaking_lobbies::Column::ChannelId.eq(IdWrapper::from(chan_id)))
+                    .one(self.utils.db_ref())
+                    .await?;
+
+                if lobby.is_none() {
+                    return Err(anyhow!(
+                        "You must run this command in a valid matchmaking thread."
+                    ));
+                }
+
+                // TODO: Refactor get resolved user from app command data to a function.
+                let resolved = data
+                    .command
+                    .resolved
+                    .ok_or_else(|| anyhow!("cannot get the resolved command user data"))?;
+                let opponent = resolved.users.values().next().ok_or_else(|| {
+                    anyhow!("cannot get the user specified in \"report-score\" command")
+                })?;
+
+                let response = self.utils.http_client.channel(chan_id).exec().await?;
+
+                if !response.status().is_success() {
+                    return Err(anyhow!("failed to get thread"));
+                }
+
+                let channel: Channel = response.model().await?;
+
+                let thread_members: Vec<ThreadMember> = self
+                    .utils
+                    .http_client
+                    .thread_members(channel.id)
+                    .exec()
+                    .await?
+                    .models()
+                    .await?;
+
+                let mut reporter_is_member: bool = false;
+                let mut opponent_is_member: bool = false;
+
+                for member in thread_members {
+                    let member_user_id = member.user_id.ok_or_else(|| {
+                        anyhow!("cannot get the user specified in \"report-score\" command")
+                    })?;
+                    if user.id == member_user_id {
+                        reporter_is_member = true;
+                    } else if opponent.id == member_user_id {
+                        opponent_is_member = true;
+                    } else if reporter_is_member && opponent_is_member {
+                        break;
+                    }
+                }
+
+                // TODO: Check if opponent is the bot, because that would be invalid.
+                if !reporter_is_member {
+                    return Err(anyhow!("user isn't part of the lobby"));
+                } else if !opponent_is_member {
+                    return Err(anyhow!("opponent isn't part of the lobby"));
+                }
+
+                let options: Vec<CommandDataOption>;
+                match subcommand.value.clone() {
+                    CommandOptionValue::SubCommand(x) => options = x,
+                    _ => options = Vec::<CommandDataOption>::new(),
+                }
+
+                let wins_option_value = options
+                    .get(1)
+                    .ok_or_else(|| anyhow!("could not get wins option"))?
+                    .value
+                    .clone();
+
+                let loses_option_value = options
+                    .get(2)
+                    .ok_or_else(|| anyhow!("could not get loses option"))?
+                    .value
+                    .clone();
+
+                let wins: i64 = match wins_option_value {
+                    CommandOptionValue::Integer(x) => x as i64,
+                    _ => 0 as i64,
+                };
+
+                let loses: i64 = match loses_option_value {
+                    CommandOptionValue::Integer(x) => x as i64,
+                    _ => 0 as i64,
+                };
+
+                // TODO: Refactor all this message stuff to reusable functions with parameters?
+                // TODO: Add an embed with options for the opponent to accept or dispute the score report.
+                // TODO: Format the message so it tags both the User & Opponent.
+                //       And show the wins for both of them in a nice looking way.
+                let guild_settings = self.utils.get_guild_settings(data.guild_id).await?;
+                let channel;
+                if let Some(cid) = guild_settings.channel_id {
+                    channel = cid.into_id();
+                } else {
+                    channel = data
+                        .interaction
+                        .channel_id
+                        .ok_or_else(|| anyhow!("command was not run in a channel"))?;
+                }
+                let msg = self
+                    .utils
+                    .http_client
+                    .interaction(self.utils.application_id)
+                    .create_followup(data.interaction.token.as_str())
+                    .content(format!("**<@{}> vs <@{}>**", user.id, opponent.id).as_str())?
+                    .embeds(&[EmbedBuilder::new()
+                        .title("Score report")
+                        .description("If the reported score is correct press the Accept button, if not you can press the Dispute button to resolve the conflict.")
+                        .field(EmbedFieldBuilder::new(&user.name, wins.to_string()).inline())
+                        .field(EmbedFieldBuilder::new(&opponent.name, loses.to_string()).inline())
+                        .validate()?
+                        .build()])?
+                    .components(&[Component::ActionRow(ActionRow {
+                        components: vec![
+                            Component::Button(Button {
+                                custom_id: Some("matchmaking:accept-score-report".to_string()),
+                                disabled: false,
+                                emoji: None,
+                                label: Some("Accept".to_string()),
+                                style: ButtonStyle::Primary,
+                                url: None,
+                            }),
+                            Component::Button(Button {
+                                custom_id: Some("matchmaking:deny-score-report".to_string()),
+                                disabled: false,
+                                emoji: None,
+                                label: Some("Dispute".to_string()),
+                                style: ButtonStyle::Danger,
+                                url: None,
+                            }),
+                        ],
+                    })])?
+                    .allowed_mentions(Some(
+                        &AllowedMentionsBuilder::new()
+                            .user_ids([user.id, opponent.id])
+                            .build(),
+                    ))
+                    .exec()
+                    .await?
+                    .model()
                     .await?;
 
                 return Ok(());
