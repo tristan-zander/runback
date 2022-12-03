@@ -641,7 +641,7 @@ dependencies = [
  "tracing-subscriber",
  "twilight-cache-inmemory",
  "twilight-gateway",
- "twilight-http",
+ "twilight-http 0.14.0",
  "twilight-mention",
  "twilight-model 0.13.7",
  "twilight-standby",
@@ -2694,7 +2694,7 @@ dependencies = [
  "tokio-tungstenite",
  "tracing",
  "twilight-gateway-queue",
- "twilight-http",
+ "twilight-http 0.13.3",
  "twilight-model 0.13.7",
  "url",
 ]
@@ -2707,7 +2707,7 @@ checksum = "0083e5c38dfd74df50ef554e79a5487f7df6efa777a18556479a3c1e66f7f1b4"
 dependencies = [
  "tokio",
  "tracing",
- "twilight-http",
+ "twilight-http 0.13.3",
 ]
 
 [[package]]
@@ -2715,6 +2715,25 @@ name = "twilight-http"
 version = "0.13.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "37947c5ffdd701c224f7fca56cb573bb745f78862ffed2fb4f0e4fd9865ea182"
+dependencies = [
+ "hyper",
+ "hyper-rustls",
+ "percent-encoding",
+ "rand",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "twilight-http-ratelimiting 0.13.3",
+ "twilight-model 0.13.7",
+ "twilight-validate 0.13.2",
+]
+
+[[package]]
+name = "twilight-http"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6537962cfaaa433e18c4805e4d071ef175026bebaff933ce3109a467795e1512"
 dependencies = [
  "brotli",
  "hyper",
@@ -2725,9 +2744,9 @@ dependencies = [
  "serde_json",
  "tokio",
  "tracing",
- "twilight-http-ratelimiting",
- "twilight-model 0.13.7",
- "twilight-validate 0.13.2",
+ "twilight-http-ratelimiting 0.14.0",
+ "twilight-model 0.14.0",
+ "twilight-validate 0.14.0",
 ]
 
 [[package]]
@@ -2735,6 +2754,18 @@ name = "twilight-http-ratelimiting"
 version = "0.13.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dcd4c27f33d986ebba7e33b228794a02da3e9cf22ec6254931d5038cbf2c78cc"
+dependencies = [
+ "futures-util",
+ "http",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "twilight-http-ratelimiting"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "65c4b3d51ada9826a7d4070374388769586f1b9fee81cf57ca2deb0f399cff5c"
 dependencies = [
  "futures-util",
  "http",

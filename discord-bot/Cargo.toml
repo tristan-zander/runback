@@ -67,7 +67,7 @@ tracing-subscriber = { version = "*", features = ["json"] }
 # Twilight.rs
 twilight-cache-inmemory = "0.13.1"
 twilight-gateway = "0.13.3"
-twilight-http = "0.13.2"
+twilight-http = "0.14.0"
 twilight-model = "0.13.7"
 twilight-standby = "0.13.2"
 twilight-mention = "0.14.0"
