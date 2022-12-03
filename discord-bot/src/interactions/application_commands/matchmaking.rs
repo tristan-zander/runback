@@ -3,20 +3,22 @@ use chrono::{DateTime, FixedOffset, Utc};
 use sea_orm::{prelude::*, IntoActiveModel, Set};
 use tokio::task::JoinHandle;
 use twilight_gateway::Event;
-use twilight_http::response::marker::ListBody;
 use twilight_model::{
     application::{
-        command::{BaseCommandOptionData, CommandOption, CommandType},
-        component::{button::ButtonStyle, ActionRow, Button, Component},
+        command::{CommandOption, CommandOptionType, CommandType},
         interaction::application_command::{CommandDataOption, CommandOptionValue},
     },
     channel::{
-        message::{allowed_mentions::AllowedMentionsBuilder, MessageFlags},
+        message::{
+            allowed_mentions::AllowedMentionsBuilder,
+            component::{ActionRow, Button, ButtonStyle},
+            Component, MessageFlags,
+        },
         thread::{AutoArchiveDuration, ThreadMember},
         Channel, ChannelType, Message,
     },
     gateway::payload::incoming::ChannelDelete,
-    guild::{Guild, Member, Permissions},
+    guild::{Guild, Member},
     http::interaction::{InteractionResponse, InteractionResponseType},
     id::{
         marker::{ChannelMarker, GuildMarker, MessageMarker, UserMarker},
@@ -63,13 +65,22 @@ impl InteractionHandler for MatchmakingCommandHandler {
                 "play-against".to_string(),
                 "Start a match with an opponent".to_string(),
             )
-            .option(CommandOption::User(BaseCommandOptionData {
+            .option(CommandOption {
                 name: "opponent".to_string(),
                 description: "The user that you wish to play against".to_string(),
                 description_localizations: None,
                 name_localizations: None,
-                required: true,
-            }))
+                required: Some(true),
+                kind: CommandOptionType::User,
+                autocomplete: None,
+                channel_types: None,
+                choices: None,
+                max_length: None,
+                min_length: None,
+                max_value: None,
+                min_value: None,
+                options: None,
+            })
             // TODO: Add this when it's ready
             // .option(CommandOption::String(ChoiceCommandOptionData {
             //     autocomplete: false,
@@ -100,13 +111,22 @@ impl InteractionHandler for MatchmakingCommandHandler {
                 "report-score".to_string(),
                 "Report the score of a match".to_string(),
             )
-            .option(CommandOption::User(BaseCommandOptionData {
+            .option(CommandOption {
                 name: "opponent".to_string(),
+                name_localizations: None,
                 description: "The user that you played against".to_string(),
                 description_localizations: None,
-                name_localizations: None,
-                required: true,
-            }))
+                required: Some(true),
+                kind: CommandOptionType::User,
+                autocomplete: None,
+                channel_types: None,
+                choices: None,
+                max_length: None,
+                min_length: None,
+                max_value: None,
+                min_value: None,
+                options: None,
+            })
             .option(
                 IntegerBuilder::new("wins".to_string(), "The amount of games won".to_string())
                     .required(true)
@@ -219,7 +239,6 @@ impl InteractionHandler for MatchmakingCommandHandler {
                             .user_ids([user.id, invited.id])
                             .build(),
                     ))
-                    .exec()
                     .await?
                     .model()
                     .await?;
@@ -231,7 +250,6 @@ impl InteractionHandler for MatchmakingCommandHandler {
                     .create_followup(data.interaction.token.as_str())
                     .content(format!("Sent a request in <#{}>", channel).as_str())?
                     .flags(MessageFlags::EPHEMERAL)
-                    .exec()
                     .await?
                     .model()
                     .await?;
@@ -285,7 +303,7 @@ impl InteractionHandler for MatchmakingCommandHandler {
                     anyhow!("cannot get the user specified in \"report-score\" command")
                 })?;
 
-                let response = self.utils.http_client.channel(chan_id).exec().await?;
+                let response = self.utils.http_client.channel(chan_id).await?;
 
                 if !response.status().is_success() {
                     return Err(anyhow!("failed to get thread"));
@@ -297,7 +315,6 @@ impl InteractionHandler for MatchmakingCommandHandler {
                     .utils
                     .http_client
                     .thread_members(channel.id)
-                    .exec()
                     .await?
                     .models()
                     .await?;
@@ -405,7 +422,6 @@ impl InteractionHandler for MatchmakingCommandHandler {
                             .user_ids([user.id, opponent.id])
                             .build(),
                     ))
-                    .exec()
                     .await?
                     .model()
                     .await?;
@@ -432,7 +448,6 @@ impl InteractionHandler for MatchmakingCommandHandler {
                         .interaction(self.utils.application_id)
                         .create_followup(data.interaction.token.as_str())
                         .content("Closing the lobby soon. Thanks for using runback!")?
-                        .exec()
                         .await
                     {
                         Ok(_) => tokio::time::sleep(Duration::from_secs(3)).await,
@@ -447,7 +462,6 @@ impl InteractionHandler for MatchmakingCommandHandler {
                         .update_thread(chan_id)
                         .archived(true)
                         .locked(true)
-                        .exec()
                         .await?;
 
                     MatchmakingLobbies::update(matchmaking_lobbies::ActiveModel {
@@ -531,7 +545,6 @@ impl InteractionHandler for MatchmakingCommandHandler {
                                 ),
                             },
                         )
-                        .exec()
                         .await?;
 
                     return Ok(());
@@ -554,7 +567,6 @@ impl InteractionHandler for MatchmakingCommandHandler {
                             .ok_or_else(|| anyhow!("user does not have a discord id"))?
                             .into(),
                     )
-                    .exec()
                     .await?
                     .model()
                     .await?;
@@ -569,7 +581,6 @@ impl InteractionHandler for MatchmakingCommandHandler {
                             .ok_or_else(|| anyhow!("user does not have a discord id"))?
                             .into(),
                     )
-                    .exec()
                     .await?
                     .model()
                     .await?;
@@ -595,11 +606,7 @@ impl InteractionHandler for MatchmakingCommandHandler {
                 if let Err(e) = res {
                     // Close the thread and send an error.
 
-                    self.utils
-                        .http_client
-                        .delete_channel(thread.id)
-                        .exec()
-                        .await?;
+                    self.utils.http_client.delete_channel(thread.id).await?;
 
                     return Err(e);
                 }
@@ -638,7 +645,6 @@ impl InteractionHandler for MatchmakingCommandHandler {
                     .http_client
                     .update_message(invitation.channel_id.into(), message_id.into_id())
                     .components(Some(&[]))?
-                    .exec()
                     .await?;
 
                 Ok(())
@@ -665,7 +671,6 @@ impl InteractionHandler for MatchmakingCommandHandler {
                             .guild_id
                             .ok_or_else(|| anyhow!("you cannot use this command in a dm"))?,
                     )
-                    .exec()
                     .await?
                     .model()
                     .await?;
@@ -711,7 +716,6 @@ impl InteractionHandler for MatchmakingCommandHandler {
                         .build()
                         ) }
                     )
-                        .exec()
                         .await?;
                 }
 
@@ -722,7 +726,6 @@ impl InteractionHandler for MatchmakingCommandHandler {
                         .update_message(invitation.channel_id.into_id(), msg_id.into_id())
                         .components(Some(&[]))?
                         .content(None)?
-                        .exec()
                         .await?;
                 }
 
@@ -742,7 +745,6 @@ impl InteractionHandler for MatchmakingCommandHandler {
                             ),
                         },
                     )
-                    .exec()
                     .await?;
 
                 MatchmakingInvitation::update(matchmaking_invitation::ActiveModel {
@@ -821,7 +823,6 @@ impl MatchmakingCommandHandler {
                 )
                 .validate()?
                 .build()])?
-            .exec()
             .await?;
 
         Ok(())
@@ -845,7 +846,6 @@ impl MatchmakingCommandHandler {
                 // .invitable(true)
                 // archive in 3 hours
                 .auto_archive_duration(AutoArchiveDuration::Day)
-                .exec()
                 .await?
                 .model()
                 .await?;
@@ -863,13 +863,12 @@ impl MatchmakingCommandHandler {
         thread_id: Id<ChannelMarker>,
         users: impl IntoIterator<Item = &Id<UserMarker>>,
     ) -> anyhow::Result<()> {
-        self.utils.http_client.join_thread(thread_id).exec().await?;
+        self.utils.http_client.join_thread(thread_id).await?;
 
         for user in users {
             self.utils
                 .http_client
                 .add_thread_member(thread_id, *user)
-                .exec()
                 .await?;
         }
 
@@ -932,7 +931,6 @@ impl MatchmakingCommandHandler {
             .utils
             .http_client
             .create_private_channel(user)
-            .exec()
             .await?
             .model()
             .await?;
@@ -954,7 +952,6 @@ impl MatchmakingCommandHandler {
                 )
                 .as_str(),
             )?
-            .exec()
             .await?
             .model()
             .await?;
@@ -1047,7 +1044,6 @@ impl BackgroundLoop {
             .utils
             .http_client
             .channel(s.channel_id.into_id())
-            .exec()
             .await?
             .model()
             .await?;
@@ -1059,7 +1055,6 @@ impl BackgroundLoop {
                 .utils
                 .http_client
                 .message(chan.id, msg.cast())
-                .exec()
                 .await?
                 .model()
                 .await?;
@@ -1124,7 +1119,6 @@ impl BackgroundLoop {
                     }
                 )
             ])?
-            .exec()
             .await?
             .model()
             .await?;
@@ -1150,7 +1144,6 @@ impl BackgroundLoop {
             .utils
             .http_client
             .channel(chan_id)
-            .exec()
             .await?
             .model()
             .await?;
@@ -1159,7 +1152,6 @@ impl BackgroundLoop {
             .http_client
             .create_message(chan.id)
             .content("This matchmaking lobby has timed out. See ya later!")?
-            .exec()
             .await?;
         if chan.kind.is_thread() {
             let _thread = self
@@ -1168,7 +1160,6 @@ impl BackgroundLoop {
                 .update_thread(chan.id)
                 .archived(true)
                 .locked(true)
-                .exec()
                 .await?;
         }
 
