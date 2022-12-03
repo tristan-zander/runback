@@ -632,7 +632,7 @@ dependencies = [
  "futures",
  "lazy_static",
  "parking_lot 0.12.1",
- "sea-orm",
+ "sea-orm 0.10.5",
  "sea-orm-migration",
  "serde",
  "serde_json",
@@ -681,12 +681,6 @@ name = "event-listener"
 version = "2.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0206175f82b8d6bf6652ff7d71a1e27fd2e4efde587fd368662814d6ec1d9ce0"
-
-[[package]]
-name = "fallible-iterator"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4443176a9f2c162692bd3d352d745ef9413eec5782a80d8fd6f8a1ac692a07f7"
 
 [[package]]
 name = "fastrand"
@@ -1573,39 +1567,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "postgres-protocol"
-version = "0.6.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "878c6cbf956e03af9aa8204b407b9cbf47c072164800aa918c516cd4b056c50c"
-dependencies = [
- "base64",
- "byteorder",
- "bytes",
- "fallible-iterator",
- "hmac",
- "md-5",
- "memchr",
- "rand",
- "sha2",
- "stringprep",
-]
-
-[[package]]
-name = "postgres-types"
-version = "0.2.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "73d946ec7d256b04dfadc4e6a3292324e6f417124750fc5c0950f981b703a0f1"
-dependencies = [
- "bytes",
- "chrono",
- "fallible-iterator",
- "postgres-protocol",
- "serde",
- "serde_json",
- "uuid",
-]
-
-[[package]]
 name = "ppv-lite86"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1888,18 +1849,42 @@ checksum = "84c7282fc3d7f79f6c5bd57e603319862fc778bf74118c0ce2a0dc82d9141dee"
 dependencies = [
  "async-stream",
  "async-trait",
- "chrono",
  "futures",
  "futures-util",
  "log",
  "once_cell",
  "ouroboros",
- "sea-orm-macros",
- "sea-query",
+ "sea-orm-macros 0.9.3",
+ "sea-query 0.26.4",
+ "sea-strum",
+ "serde",
+ "sqlx",
+ "tracing",
+ "url",
+]
+
+[[package]]
+name = "sea-orm"
+version = "0.10.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "28fc9dad132e450d6320bd5953e70fb88b42785080b591e9be804da69bd8a170"
+dependencies = [
+ "async-stream",
+ "async-trait",
+ "chrono",
+ "futures",
+ "futures-util",
+ "log",
+ "ouroboros",
+ "sea-orm-macros 0.10.5",
+ "sea-query 0.27.2",
+ "sea-query-binder",
  "sea-strum",
  "serde",
  "serde_json",
  "sqlx",
+ "thiserror",
+ "time 0.3.17",
  "tracing",
  "url",
  "uuid",
@@ -1936,6 +1921,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "sea-orm-macros"
+version = "0.10.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "66af5d33e04e56dafb2c700f9b1201a39e6c2c77b53ed9ee93244f21f8de6041"
+dependencies = [
+ "bae",
+ "heck 0.3.3",
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "sea-orm-migration"
 version = "0.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1944,7 +1942,7 @@ dependencies = [
  "async-trait",
  "clap",
  "dotenv",
- "sea-orm",
+ "sea-orm 0.9.3",
  "sea-orm-cli",
  "sea-schema",
  "tracing",
@@ -1957,11 +1955,32 @@ version = "0.26.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "15e36a9680854b4e5d2ea5230f94e7ef81562260905b770fe20c3df9b3e7a536"
 dependencies = [
- "chrono",
- "postgres-types",
  "sea-query-derive",
  "sea-query-driver",
+]
+
+[[package]]
+name = "sea-query"
+version = "0.27.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a4f0fc4d8e44e1d51c739a68d336252a18bc59553778075d5e32649be6ec92ed"
+dependencies = [
+ "chrono",
+ "sea-query-derive",
  "serde_json",
+ "uuid",
+]
+
+[[package]]
+name = "sea-query-binder"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9c2585b89c985cfacfe0ec9fc9e7bb055b776c1a2581c4e3c6185af2b8bf8865"
+dependencies = [
+ "chrono",
+ "sea-query 0.27.2",
+ "serde_json",
+ "sqlx",
  "uuid",
 ]
 
@@ -1996,7 +2015,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f737a6819fcad9727207d7090ccd6a33c0b384f3794e8838f952b52d599e3a17"
 dependencies = [
  "futures",
- "sea-query",
+ "sea-query 0.26.4",
  "sea-schema-derive",
 ]
 
