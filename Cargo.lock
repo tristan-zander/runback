@@ -2781,15 +2781,15 @@ dependencies = [
 
 [[package]]
 name = "twilight-standby"
-version = "0.13.2"
+version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "96df97e8a732844450e322a5d4bdc08044646aa86f5a4f77d51b2b1225ecd55f"
+checksum = "01a385420f4d5bc5d917365d5d13793362579828acbbfe2ed479c048d3ef71ed"
 dependencies = [
  "dashmap",
  "futures-util",
  "tokio",
  "tracing",
- "twilight-model 0.13.7",
+ "twilight-model 0.14.0",
 ]
 
 [[package]]
