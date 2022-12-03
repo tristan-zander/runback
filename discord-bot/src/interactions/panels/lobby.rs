@@ -1,6 +1,6 @@
 use bot::entity;
 use bot::entity::prelude::*;
-use twilight_model::channel::embed::EmbedField;
+use twilight_model::channel::message::embed::EmbedField;
 use twilight_util::builder::{embed::EmbedBuilder, InteractionResponseDataBuilder};
 
 pub struct LobbyPanel<'a> {

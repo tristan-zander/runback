@@ -1,8 +1,6 @@
 use std::sync::Arc;
 
-use twilight_model::application::command::{
-    BaseCommandOptionData, ChannelCommandOptionData, CommandOption, CommandType,
-};
+use twilight_model::application::command::{CommandOption, CommandOptionType, CommandType};
 use twilight_model::channel::ChannelType;
 use twilight_model::guild::Permissions;
 use twilight_util::builder::command::{CommandBuilder, SubCommandBuilder, SubCommandGroupBuilder};
@@ -42,26 +40,43 @@ impl InteractionHandler for AdminCommandHandler {
             )
             .subcommands([
                 SubCommandBuilder::new("admin-role", "Set which users can act as admins").option(
-                    CommandOption::Role(BaseCommandOptionData {
+                    CommandOption {
                         name: "role".to_string(),
+                        name_localizations: None,
                         description: "The admin role (to disable, set to empty)".to_string(),
                         description_localizations: None,
-                        name_localizations: None,
-                        required: false,
-                    }),
+                        required: Some(false),
+                        autocomplete: None,
+                        channel_types: None,
+                        choices: None,
+                        kind: CommandOptionType::Role,
+                        max_length: None,
+                        min_length: None,
+                        max_value: None,
+                        min_value: None,
+                        options: None,
+                    },
                 ),
                 SubCommandBuilder::new(
                     "matchmaking-channel",
                     "Set the default matchmaking channel",
                 )
-                .option(CommandOption::Channel(ChannelCommandOptionData {
+                .option(CommandOption {
                     name: "channel".to_string(),
                     description: "The matchmaking channel (to disable, set to empty)".to_string(),
-                    channel_types: vec![ChannelType::GuildText],
+                    channel_types: Some(vec![ChannelType::GuildText]),
                     description_localizations: None,
                     name_localizations: None,
-                    required: false,
-                })),
+                    required: Some(false),
+                    kind: CommandOptionType::Channel,
+                    autocomplete: None,
+                    choices: None,
+                    max_length: None,
+                    min_length: None,
+                    max_value: None,
+                    min_value: None,
+                    options: None,
+                }),
             ]),
         );
 

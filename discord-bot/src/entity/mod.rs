@@ -158,6 +158,10 @@ impl<T> ValueType for IdWrapper<T> {
     fn column_type() -> sea_orm::sea_query::ColumnType {
         i64::column_type()
     }
+
+    fn array_type() -> sea_orm::sea_query::ArrayType {
+        i64::array_type()
+    }
 }
 
 impl<T> From<IdWrapper<T>> for u64 {

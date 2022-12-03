@@ -301,7 +301,10 @@ impl MigrationTrait for Migration {
                     )
                     .col(
                         ColumnDef::new(matchmaking_lobbies::Column::Privacy)
-                            .enumeration("lobby_privacy", ["open", "invite_only"])
+                            .enumeration(
+                                LobbyType::LobbyPrivacy,
+                                [LobbyPrivacy::Open, LobbyPrivacy::InviteOnly],
+                            )
                             .not_null(),
                     )
                     .col(ColumnDef::new(matchmaking_lobbies::Column::Game).uuid())
