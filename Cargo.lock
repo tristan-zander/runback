@@ -643,7 +643,7 @@ dependencies = [
  "twilight-gateway",
  "twilight-http",
  "twilight-mention",
- "twilight-model 0.13.7",
+ "twilight-model 0.14.0",
  "twilight-standby",
  "twilight-util",
  "twilight-validate 0.14.0",
