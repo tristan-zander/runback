@@ -25,6 +25,7 @@ use futures::{
 use sea_orm_migration::prelude::*;
 use std::{process::exit, sync::Arc};
 use tokio::signal::unix::{signal, SignalKind};
+use tracing_subscriber::EnvFilter;
 use twilight_cache_inmemory::{InMemoryCache, ResourceType};
 use twilight_gateway::{Cluster, Intents};
 use twilight_standby::Standby;
@@ -47,13 +48,28 @@ lazy_static! {
 }
 
 fn main() {
+    let filter = EnvFilter::from_default_env()
+        .add_directive("twilight_gateway=info".parse().unwrap())
+        .add_directive("twilight_gateway_queue=info".parse().unwrap())
+        .add_directive("twilight_http_ratelimiting=info".parse().unwrap())
+        .add_directive("rustls=info".parse().unwrap())
+        .add_directive("h2=info".parse().unwrap())
+        .add_directive("hyper=info".parse().unwrap())
+        .add_directive("tungstenite=info".parse().unwrap())
+        .add_directive(Into::<tracing::Level>::into(CONFIG.as_ref().log_level).into());
+
     let formatter = tracing_subscriber::fmt()
         .with_level(true)
         .with_target(true)
-        .with_max_level(Into::<tracing::Level>::into(CONFIG.as_ref().log_level));
+        .with_thread_ids(true)
+        .with_thread_names(true)
+        .with_line_number(true)
+        .with_env_filter(filter);
 
     let res = if CONFIG.log_as_json {
         formatter.json().try_init().map_err(|e| anyhow!(e))
+    } else if cfg!(debug_assertions) {
+        formatter.pretty().try_init().map_err(|e| anyhow!(e))
     } else {
         formatter.try_init().map_err(|e| anyhow!(e))
     };
