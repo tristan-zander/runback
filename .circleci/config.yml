@@ -9,8 +9,7 @@ workflows:
           base-revision: main
           mapping: |
             .circleci/.* rerun-all true
-            Config.(toml|lock) modified-root-manifest true
+            Cargo.(toml|lock) rerun-all true
             common/.* modified-common true
             discord-bot/.* modified-discord-bot true
-            matchmaking-service/.* modified-matchmaking-service true
           config-path: .circleci/workflows.yml

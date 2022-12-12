@@ -1,16 +1,10 @@
 version: 2.1
 
 parameters:
-  modified-root-manifest:
-    type: boolean
-    default: false
   modified-common:
     type: boolean
     default: false
   modified-discord-bot:
-    type: boolean
-    default: false
-  modified-matchmaking-service:
     type: boolean
     default: false
   rerun-all:
@@ -28,7 +22,6 @@ workflows:
   discord-bot:
     when:
       or:
-        - << pipeline.parameters.modified-root-manifest >>
         - << pipeline.parameters.modified-common >>
         - << pipeline.parameters.modified-discord-bot >>
         - << pipeline.parameters.rerun-all >>
