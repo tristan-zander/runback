@@ -2446,9 +2446,9 @@ dependencies = [
 
 [[package]]
 name = "twilight-http"
-version = "0.14.0"
+version = "0.14.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6537962cfaaa433e18c4805e4d071ef175026bebaff933ce3109a467795e1512"
+checksum = "8ee78be1791a64c2670624f39cc60e66357ecd2cd739b7dd5fa6caf0d4ea116a"
 dependencies = [
  "brotli",
  "hyper",
@@ -2466,9 +2466,9 @@ dependencies = [
 
 [[package]]
 name = "twilight-http-ratelimiting"
-version = "0.14.0"
+version = "0.14.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "65c4b3d51ada9826a7d4070374388769586f1b9fee81cf57ca2deb0f399cff5c"
+checksum = "138510dde92c0f394e0bbcd93203d616ff095fa1acc92f3bcfe6dbeaace24726"
 dependencies = [
  "futures-util",
  "http",
