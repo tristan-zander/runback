@@ -2487,9 +2487,9 @@ dependencies = [
 
 [[package]]
 name = "twilight-model"
-version = "0.14.2"
+version = "0.14.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4b501e88e7d4c82c70090616a8efdeb82a9778968b6a6723caf2c78b57142525"
+checksum = "3e086aa8c5bec5c65c948ab1d9866cab46383d290b398625c27d6d60638827ea"
 dependencies = [
  "bitflags",
  "serde",
@@ -2501,9 +2501,9 @@ dependencies = [
 
 [[package]]
 name = "twilight-standby"
-version = "0.14.0"
+version = "0.14.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "01a385420f4d5bc5d917365d5d13793362579828acbbfe2ed479c048d3ef71ed"
+checksum = "23f92861d70066d97b09ab54d65ec44d1fa8b737784bd3accb31585bcd1757e6"
 dependencies = [
  "dashmap",
  "futures-util",
