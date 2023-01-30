@@ -65,7 +65,7 @@ async-trait = "0.1.61"
 tracing = "0.1.29"
 tracing-subscriber = { version = "*", features = ["json"] }
 # Twilight.rs
-twilight-cache-inmemory = "0.14.1"
+twilight-cache-inmemory = "0.14.3"
 twilight-gateway = "0.14.0"
 twilight-http = "0.14.1"
 twilight-model = "0.14.0"

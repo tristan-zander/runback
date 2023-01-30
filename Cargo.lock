@@ -2401,9 +2401,9 @@ dependencies = [
 
 [[package]]
 name = "twilight-cache-inmemory"
-version = "0.14.1"
+version = "0.14.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0cdca67000bfd04bbf1757570d0ef18b29533e51ab56a8c4721133534e23d020"
+checksum = "c35b4f06dbf6aa63d982190fe0e8485bf5ceb7140e13346636372c7552aa9d4e"
 dependencies = [
  "bitflags",
  "dashmap",
@@ -2487,9 +2487,9 @@ dependencies = [
 
 [[package]]
 name = "twilight-model"
-version = "0.14.2"
+version = "0.14.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4b501e88e7d4c82c70090616a8efdeb82a9778968b6a6723caf2c78b57142525"
+checksum = "950ddd885a828304b8dfbeaba7d613daeadec467807f82ed4df34b782a79c5b2"
 dependencies = [
  "bitflags",
  "serde",
