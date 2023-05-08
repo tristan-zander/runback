@@ -3,24 +3,19 @@ pub mod panels;
 
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use bot::entity::sea_orm::{prelude::Uuid, DatabaseConnection};
+use bot::entity::sea_orm::prelude::Uuid;
 
-use futures::{future::BoxFuture, Future};
+use futures::future::BoxFuture;
 use tokio::time::timeout;
 use tracing::{Instrument, Level};
-use twilight_cache_inmemory::InMemoryCache;
 use twilight_gateway::Shard;
 use twilight_model::{
-    application::{
-        command::Command,
-        interaction::{Interaction, InteractionData, InteractionType},
-    },
+    application::{command::Command, interaction::InteractionData},
     channel::message::MessageFlags,
     gateway::payload::incoming::InteractionCreate,
     http::interaction::{InteractionResponse, InteractionResponseType},
     id::{marker::CommandMarker, Id},
 };
-use twilight_standby::Standby;
 use twilight_util::builder::embed::{EmbedBuilder, EmbedFieldBuilder, EmbedFooterBuilder};
 
 use crate::interactions::application_commands::{
@@ -96,7 +91,6 @@ impl InteractionProcessor {
                     .http_client
                     .interaction(self.utils.application_id)
                     .set_guild_commands(debug_guild, commands.as_slice())
-                    .exec()
                     .await?
                     .models()
                     .await?
@@ -105,7 +99,6 @@ impl InteractionProcessor {
                     .http_client
                     .interaction(self.utils.application_id)
                     .set_global_commands(commands.as_slice())
-                    .exec()
                     .await?
                     .models()
                     .await?
@@ -153,7 +146,6 @@ impl InteractionProcessor {
             .http_client
             .interaction(self.utils.application_id)
             .global_commands()
-            .exec()
             .await?
             .models()
             .await?;
@@ -168,7 +160,6 @@ impl InteractionProcessor {
                     .http_client
                     .interaction(self.utils.application_id)
                     .delete_global_command(c.id.ok_or_else(|| anyhow!("global command has no ID"))?) // realistically, this error will never be shown
-                    .exec()
                     .await?;
             }
         }
@@ -273,7 +264,6 @@ impl InteractionProcessor {
                     data: None,
                 },
             )
-            .exec()
             .await?;
 
         let name = data.command.name.clone();
@@ -305,7 +295,6 @@ impl InteractionProcessor {
                             .field(EmbedFieldBuilder::new("error", e.to_string()).build())
                             .validate()?
                             .build()])?
-                        .exec()
                         .await?;
                 }
 
@@ -317,7 +306,6 @@ impl InteractionProcessor {
                     .interaction(utils.application_id)
                     .update_response(token.as_str())
                     .content(Some("Command timed out."))?
-                    .exec()
                     .await?;
                 Err(anyhow!("Command timed out: {}", name))
             }

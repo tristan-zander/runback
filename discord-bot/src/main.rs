@@ -11,10 +11,7 @@ extern crate async_trait;
 #[macro_use]
 extern crate tokio;
 
-use bot::entity::{
-    sea_orm::{ConnectOptions, Database, DatabaseConnection},
-    IdWrapper,
-};
+use bot::entity::sea_orm::{ConnectOptions, Database, DatabaseConnection};
 use config::Config;
 use error::RunbackError;
 use futures::{
@@ -216,18 +213,11 @@ async fn entrypoint() -> anyhow::Result<()> {
     if let Some(guild) = CONFIG.debug_guild_id {
         let client = twilight_http::Client::new(CONFIG.token.clone());
 
-        let application_id = client
-            .current_user_application()
-            .exec()
-            .await?
-            .model()
-            .await?
-            .id;
+        let application_id = client.current_user_application().await?.model().await?.id;
 
         let guild_commands = client
             .interaction(application_id)
             .guild_commands(guild)
-            .exec()
             .await?
             .model()
             .await?;
@@ -237,7 +227,6 @@ async fn entrypoint() -> anyhow::Result<()> {
             client
                 .interaction(application_id)
                 .delete_guild_command(guild, c.id.ok_or_else(|| anyhow!("command has no id"))?)
-                .exec()
                 .await?;
         }
     }

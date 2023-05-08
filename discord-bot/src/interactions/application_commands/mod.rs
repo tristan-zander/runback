@@ -9,24 +9,17 @@ pub mod utils;
 
 pub use utils::CommonUtilities;
 
-use std::sync::Arc;
-
 use sea_orm::prelude::*;
 use twilight_model::{
     application::{
-        command::{Command, CommandType},
+        command::Command,
         interaction::{
             application_command::CommandData, message_component::MessageComponentInteractionData,
             Interaction,
         },
     },
-    channel::message::MessageFlags,
-    http::interaction::{InteractionResponse, InteractionResponseType},
     id::{marker::GuildMarker, Id},
 };
-use twilight_util::builder::command::{CommandBuilder, StringBuilder};
-use twilight_util::builder::embed::{EmbedBuilder, EmbedFieldBuilder};
-use twilight_util::builder::InteractionResponseDataBuilder;
 
 /// Describes a group of commands. This is mainly used
 /// for structural purposes, and for the `/help` command
@@ -49,7 +42,7 @@ pub trait InteractionHandler {
     async fn process_component(&self, data: Box<MessageComponentData>) -> anyhow::Result<()>;
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ApplicationCommandData {
     pub interaction: Interaction,
     pub command: CommandData,
