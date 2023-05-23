@@ -6,7 +6,9 @@ extern crate serde;
 extern crate anyhow;
 
 pub mod config;
+pub mod events;
 pub mod eventing;
 pub mod logging;
+pub mod services;
 
 // TODO: Write common logger setup

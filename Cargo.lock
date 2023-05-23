@@ -290,7 +290,9 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "cqrs-es",
  "dashmap",
+ "postgres-es",
  "reqwest",
  "serde",
  "tracing",
@@ -320,6 +322,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "28d997bd5e24a5928dd43e46dc529867e207907fe0b239c3477d924f7f2ca320"
 dependencies = [
  "libc",
+]
+
+[[package]]
+name = "cqrs-es"
+version = "0.4.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bd51aea1521d51b7aa249430e2160f857a5b0146098b08615022e7ee22f28f72"
+dependencies = [
+ "async-trait",
+ "serde",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]
@@ -1346,6 +1360,21 @@ name = "pkg-config"
 version = "0.3.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6ac9a59f73473f1b8d852421e59e64809f025994837ef743615c6d0c5b305160"
+
+[[package]]
+name = "postgres-es"
+version = "0.4.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "69aa7585cf0eaf34764faba61574297f586829d4184e605dfb980554fea5ef18"
+dependencies = [
+ "async-trait",
+ "cqrs-es",
+ "futures",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "tokio",
+]
 
 [[package]]
 name = "ppv-lite86"
