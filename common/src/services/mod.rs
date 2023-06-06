@@ -3,18 +3,24 @@
 //! 
 //! Any common business logic should exist as a service.
 
+
+
 use postgres_es::{PostgresCqrs, PostgresEventRepository};
 
 use crate::events::*;
 
 /// Contains core logic for interacting with a lobby.
 pub struct LobbyService {
-    events: PostgresEventRepository,
+    // 
 }
 
 impl LobbyService {
     /// Opens a lobby for players to join.
-    async fn open_lobby(&self, owner_id: String) -> anyhow::Result<()> {
-        unimplemented!()
+    pub async fn open_lobby(&self, owner_id: u64) -> Result<(), LobbyError> {
+
+
+        unimplemented!();
+
+        Ok(())
     }
 }
