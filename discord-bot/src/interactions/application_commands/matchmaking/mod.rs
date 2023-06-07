@@ -642,7 +642,7 @@ impl InteractionHandler for MatchmakingCommandHandler {
 }
 
 impl MatchmakingCommandHandler {
-    pub fn new(utils: Arc<CommonUtilities>) -> Self {
+    pub async fn new(utils: Arc<CommonUtilities>) -> Self {
         // TODO: Start a thread to keep track of the matchmaking instances.
         let utils_bg = utils.clone();
         let utils_lobby = utils.clone();
@@ -658,7 +658,7 @@ impl MatchmakingCommandHandler {
         Self {
             utils,
             _background_task: background_task,
-            lobby: LobbyCommandHandler::new(utils_lobby),
+            lobby: LobbyCommandHandler::new(utils_lobby).await,
         }
     }
 

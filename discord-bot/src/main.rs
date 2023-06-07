@@ -11,13 +11,20 @@ extern crate async_trait;
 #[macro_use]
 extern crate tokio;
 
-use bot::entity::sea_orm::{ConnectOptions, Database, DatabaseConnection};
+use bot::{
+    entity::sea_orm::{ConnectOptions, Database, DatabaseConnection},
+    events::Lobby,
+    services::LobbyService, queries::DiscordEventQuery,
+};
 use config::Config;
+use cqrs_es::{mem_store::MemStore, persist::PersistedEventStore, CqrsFramework, Aggregate};
 use error::RunbackError;
+use figment::providers::Data;
 use futures::{
     future::select,
     stream::{FuturesUnordered, StreamExt},
 };
+use postgres_es::{default_postgress_pool, PostgresCqrs, PostgresEventRepository};
 #[cfg(feature = "migrator")]
 use sea_orm_migration::prelude::*;
 use std::{process::exit, sync::Arc};
@@ -25,6 +32,7 @@ use tokio::signal::unix::{signal, SignalKind};
 use tracing_subscriber::EnvFilter;
 use twilight_cache_inmemory::{InMemoryCache, ResourceType};
 use twilight_gateway::{Cluster, Intents};
+use twilight_http::{client::ClientBuilder, Client};
 use twilight_standby::Standby;
 
 use twilight_model::gateway::{
@@ -335,8 +343,7 @@ async fn process_role_delete(
     Ok(())
 }
 
-#[tracing::instrument]
-async fn connect_to_database() -> Result<Arc<Box<DatabaseConnection>>, RunbackError> {
+fn create_connection_string() -> String {
     let db = &CONFIG.db;
     let pass = if db.password.is_some() {
         format!(":{}", db.password.as_ref().unwrap())
@@ -352,10 +359,30 @@ async fn connect_to_database() -> Result<Arc<Box<DatabaseConnection>>, RunbackEr
     info!(host = ?db.host, "Connecting to database");
     debug!(connection_string = ?connection_string);
 
+    connection_string
+}
+
+#[tracing::instrument]
+async fn connect_to_database() -> Result<Arc<Box<DatabaseConnection>>, RunbackError> {
+    let connection_string = create_connection_string();
+
     let opt = ConnectOptions::new(connection_string);
 
     // Arc<Box> is easier than setting up a static lifetime reference for the DatabaseConnection
     let db = Arc::new(Box::new(Database::connect(opt).await?));
 
     Ok(db)
+}
+
+async fn create_event_handler<T: Aggregate>(
+    service: T::Services,
+) -> CqrsFramework<T, PersistedEventStore<PostgresEventRepository, T>> {
+    let connection_string = create_connection_string();
+    let pool = default_postgress_pool(connection_string.as_str()).await;
+    let repo = PostgresEventRepository::new(pool);
+    let store = PersistedEventStore::<PostgresEventRepository, T>::new_event_store(repo);
+    let query = Box::new(DiscordEventQuery{});
+    let event_store = PostgresCqrs::new(store, vec![ query ], service);
+
+    event_store
 }

@@ -1,8 +1,12 @@
 use std::sync::Arc;
 
-use bot::entity::prelude::*;
+use bot::{entity::prelude::*, services::LobbyService, events::{Lobby, LobbyCommand}};
 
 use chrono::Utc;
+use cqrs_es::{CqrsFramework, persist::PersistedEventStore};
+use postgres_es::PostgresEventRepository;
+use sea_orm::prelude::Uuid;
+use twilight_http::client::ClientBuilder;
 use twilight_model::{
     application::interaction::application_command::CommandDataOption,
     channel::{
@@ -17,7 +21,7 @@ use twilight_model::{
 };
 use twilight_util::builder::embed::{EmbedBuilder, EmbedFieldBuilder};
 
-use crate::interactions::application_commands::{ApplicationCommandData, CommonUtilities};
+use crate::{interactions::application_commands::{ApplicationCommandData, CommonUtilities}, create_event_handler};
 
 pub struct LobbyData {
     pub data: Box<ApplicationCommandData>,
@@ -34,11 +38,17 @@ impl AsRef<ApplicationCommandData> for LobbyData {
 
 pub struct LobbyCommandHandler {
     utils: Arc<CommonUtilities>,
+    lobby_events: CqrsFramework<Lobby, PersistedEventStore<PostgresEventRepository, Lobby>>
 }
 
 impl LobbyCommandHandler {
-    pub fn new(utils: Arc<CommonUtilities>) -> Self {
-        Self { utils }
+    pub async fn new(utils: Arc<CommonUtilities>) -> Self {
+        let lobby_service = LobbyService::new(
+            ClientBuilder::new().token(crate::CONFIG.token.to_owned()).build()
+        );
+        let lobby_events = create_event_handler::<Lobby>(lobby_service).await;
+
+        Self { utils, lobby_events }
     }
 
     pub async fn process_command(&self, data: LobbyData) -> Result<(), anyhow::Error> {
@@ -59,6 +69,10 @@ impl LobbyCommandHandler {
                     thread.id,
                 )
                 .await?;
+
+                self.lobby_events.execute("2", LobbyCommand::OpenLobby { owner_id: 0, channel: 0 }).await.map_err(|e| anyhow!(e))?;
+
+                return Err(anyhow!("I just haven't gotten this far yet."));
 
                 unimplemented!("Give the user feedback that the session has started.")
             }

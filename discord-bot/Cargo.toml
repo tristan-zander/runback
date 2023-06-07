@@ -73,3 +73,6 @@ twilight-standby = "0.14.0"
 twilight-mention = "0.14.0"
 twilight-validate = "0.14.0"
 twilight-util = { version = "0.14.1", features = ["full"] }
+
+cqrs-es = "0.4.8"
+postgres-es = "0.4.8"

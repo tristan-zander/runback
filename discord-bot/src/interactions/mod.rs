@@ -43,7 +43,7 @@ impl InteractionProcessor {
 
         let top_level_handlers: Vec<Arc<Box<dyn InteractionHandler + Send + Sync + 'static>>> = vec![
             Arc::new(Box::new(AdminCommandHandler::new(utils.clone()))),
-            Arc::new(Box::new(MatchmakingCommandHandler::new(utils.clone()))),
+            Arc::new(Box::new(MatchmakingCommandHandler::new(utils.clone()).await)),
             // Arc::new(Box::new(EulaCommandHandler::new(utils.clone()))),
             // Arc::new(Box::new(LfgCommandHandler {
             //     utils: utils.clone(),
