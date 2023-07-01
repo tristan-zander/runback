@@ -18,7 +18,9 @@ use twilight_model::{
             Interaction,
         },
     },
+    guild::PartialMember,
     id::{marker::GuildMarker, Id},
+    user::User,
 };
 
 /// Describes a group of commands. This is mainly used
@@ -47,7 +49,37 @@ pub struct ApplicationCommandData {
     pub interaction: Interaction,
     pub command: CommandData,
     pub id: Uuid,
-    pub guild_id: Id<GuildMarker>, // pub cancellation_token
+    pub guild_id: Id<GuildMarker>,
+    pub member: PartialMember,
+    pub user: User,
+}
+
+impl ApplicationCommandData {
+    pub fn new(data: CommandData, interaction: Interaction) -> anyhow::Result<Self> {
+        let new_interaction = interaction.clone();
+
+        let member = interaction.member.ok_or_else(|| {
+            anyhow!("Could not get member information for user that invoked the command.")
+        })?;
+
+        let guild_id = data
+            .guild_id
+            .ok_or_else(|| anyhow!("Command was not run in a guild."))?;
+
+        let user = member
+            .user
+            .clone()
+            .ok_or_else(|| anyhow!("Could not get user information."))?;
+
+        Ok(Self {
+            id: Uuid::new_v4(),
+            interaction: new_interaction,
+            command: data,
+            member,
+            user,
+            guild_id,
+        })
+    }
 }
 
 #[derive(Debug)]
@@ -56,5 +88,4 @@ pub struct MessageComponentData {
     pub message: MessageComponentInteractionData,
     pub action: String,
     pub id: Uuid,
-    // pub cancellation_token
 }

@@ -43,7 +43,9 @@ impl InteractionProcessor {
 
         let top_level_handlers: Vec<Arc<Box<dyn InteractionHandler + Send + Sync + 'static>>> = vec![
             Arc::new(Box::new(AdminCommandHandler::new(utils.clone()))),
-            Arc::new(Box::new(MatchmakingCommandHandler::new(utils.clone()).await)),
+            Arc::new(Box::new(
+                MatchmakingCommandHandler::new(utils.clone()).await,
+            )),
             // Arc::new(Box::new(EulaCommandHandler::new(utils.clone()))),
             // Arc::new(Box::new(LfgCommandHandler {
             //     utils: utils.clone(),
@@ -191,14 +193,10 @@ impl InteractionProcessor {
                 //     .await?;
                 debug!(id = ?&command.id, "received application command");
                 if let Some(handler) = self.application_command_handlers.get(&command.id) {
-                    let data = Box::new(ApplicationCommandData {
-                        command: *command.clone(),
-                        id: Uuid::new_v4(),
-                        interaction: interaction.0.clone(),
-                        guild_id: interaction
-                            .guild_id
-                            .ok_or_else(|| anyhow!("you must run this command in a valid guild"))?,
-                    });
+                    let data = Box::new(ApplicationCommandData::new(
+                        *command.clone(),
+                        interaction.0.clone(),
+                    )?);
                     let fut = Box::pin(Self::execute_application_command(
                         handler.clone(),
                         data,

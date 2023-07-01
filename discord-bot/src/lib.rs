@@ -10,6 +10,9 @@ extern crate tracing;
 #[macro_use]
 extern crate async_trait;
 
+#[macro_use]
+extern crate anyhow;
+
 pub mod events;
 pub mod services;
 pub mod queries;

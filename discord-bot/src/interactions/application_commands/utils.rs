@@ -4,9 +4,10 @@ use sea_orm::{prelude::*, DatabaseConnection, IntoActiveModel, Set};
 use twilight_cache_inmemory::InMemoryCache;
 use twilight_model::{
     application::interaction::Interaction,
-    http::interaction::InteractionResponse,
+    guild::Guild,
+    http::interaction::{InteractionResponse, InteractionResponseData},
     id::{
-        marker::{ApplicationMarker, GuildMarker, UserMarker},
+        marker::{ApplicationMarker, GuildMarker, InteractionMarker, UserMarker},
         Id,
     },
     user::{CurrentUser, User},
@@ -87,7 +88,6 @@ impl CommonUtilities {
             .http_client
             .interaction(self.application_id)
             .create_response(interaction.id, interaction.token.as_str(), message)
-            .exec()
             .await?;
 
         debug!("Send Message response: {:#?}", res);
@@ -157,5 +157,24 @@ impl CommonUtilities {
 
             return Ok(user);
         }
+    }
+
+    pub async fn get_guild(&self, guild_id: Id<GuildMarker>) -> anyhow::Result<Guild> {
+        let res = self.http_client.guild(guild_id).await?;
+        return Ok(res.model().await.map_err(|e| anyhow!(e))?);
+    }
+
+    pub async fn respond_to_user(&self) -> anyhow::Result<()> {
+        unimplemented!()
+    }
+
+    pub async fn ack(&self, interaction_token: &str) -> anyhow::Result<()> {
+        self
+            .http_client
+            .interaction(self.application_id)
+            .delete_response(interaction_token)
+            .await?;
+
+        Ok(())
     }
 }

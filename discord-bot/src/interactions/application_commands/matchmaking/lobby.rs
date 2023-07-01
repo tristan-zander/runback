@@ -1,27 +1,29 @@
 use std::sync::Arc;
 
-use bot::{entity::prelude::*, services::LobbyService, events::{Lobby, LobbyCommand}};
+use bot::{
+    entity::prelude::*,
+    events::{Lobby, LobbyCommand},
+    services::LobbyService,
+};
 
 use chrono::Utc;
-use cqrs_es::{CqrsFramework, persist::PersistedEventStore};
+use cqrs_es::{persist::PersistedEventStore, CqrsFramework};
 use postgres_es::PostgresEventRepository;
 use sea_orm::prelude::Uuid;
 use twilight_http::client::ClientBuilder;
 use twilight_model::{
     application::interaction::application_command::CommandDataOption,
-    channel::{
-        message::allowed_mentions::AllowedMentionsBuilder, thread::AutoArchiveDuration, Channel,
-        ChannelType::PublicThread,
-    },
     guild::PartialMember,
     id::{
         marker::{ChannelMarker, GuildMarker, UserMarker},
         Id,
     },
 };
-use twilight_util::builder::embed::{EmbedBuilder, EmbedFieldBuilder};
 
-use crate::{interactions::application_commands::{ApplicationCommandData, CommonUtilities}, create_event_handler};
+use crate::{
+    create_event_handler,
+    interactions::application_commands::{ApplicationCommandData, CommonUtilities},
+};
 
 pub struct LobbyData {
     pub data: Box<ApplicationCommandData>,
@@ -38,43 +40,29 @@ impl AsRef<ApplicationCommandData> for LobbyData {
 
 pub struct LobbyCommandHandler {
     utils: Arc<CommonUtilities>,
-    lobby_events: CqrsFramework<Lobby, PersistedEventStore<PostgresEventRepository, Lobby>>
+    lobby_events: CqrsFramework<Lobby, PersistedEventStore<PostgresEventRepository, Lobby>>,
 }
 
 impl LobbyCommandHandler {
     pub async fn new(utils: Arc<CommonUtilities>) -> Self {
         let lobby_service = LobbyService::new(
-            ClientBuilder::new().token(crate::CONFIG.token.to_owned()).build()
+            ClientBuilder::new()
+                .token(crate::CONFIG.token.to_owned())
+                .build(),
         );
         let lobby_events = create_event_handler::<Lobby>(lobby_service).await;
 
-        Self { utils, lobby_events }
+        Self {
+            utils,
+            lobby_events,
+        }
     }
 
     pub async fn process_command(&self, data: LobbyData) -> Result<(), anyhow::Error> {
+        let interaction = data.data.interaction.clone();
         match data.action.as_str() {
             "open" => {
-                let interaction = data.data.interaction;
-                let channel = interaction.channel_id.unwrap();
-                let thread = self
-                    .start_matchmaking_thread(data.data.guild_id, channel)
-                    .await?;
-
-                self.send_thread_opening_message(
-                    &[data
-                        .member
-                        .user
-                        .ok_or_else(|| anyhow!("could not get user id"))?
-                        .id],
-                    thread.id,
-                )
-                .await?;
-
-                self.lobby_events.execute("2", LobbyCommand::OpenLobby { owner_id: 0, channel: 0 }).await.map_err(|e| anyhow!(e))?;
-
-                return Err(anyhow!("I just haven't gotten this far yet."));
-
-                unimplemented!("Give the user feedback that the session has started.")
+                self.open_lobby(data).await?;
             }
             "close" => {
                 let lobby = self.get_lobby(data.data.guild_id).await?;
@@ -89,6 +77,33 @@ impl LobbyCommandHandler {
             _ => return Err(anyhow!("")),
         }
 
+        self.utils.ack(&interaction.token).await?;
+
+        Ok(())
+    }
+
+    async fn open_lobby(&self, data: LobbyData) -> anyhow::Result<()> {
+        let interaction = data.data.interaction;
+        let channel = interaction.channel_id.unwrap();
+
+        let owner_id = data
+            .member
+            .user
+            .ok_or_else(|| anyhow!("could not get user id"))?
+            .id;
+
+        // Send a command to open a lobby.
+        self.lobby_events
+            .execute(
+                Uuid::new_v4().to_string().as_str(),
+                LobbyCommand::OpenLobby {
+                    owner_id: owner_id.get(),
+                    channel: channel.get(),
+                },
+            )
+            .await
+            .map_err(|e| anyhow!(e))?;
+
         Ok(())
     }
 
@@ -100,78 +115,6 @@ impl LobbyCommandHandler {
     }
 
     async fn invite(&self) {}
-
-    async fn send_thread_opening_message(
-        &self,
-        users: impl IntoIterator<Item = &Id<UserMarker>>,
-        channel: Id<ChannelMarker>,
-    ) -> anyhow::Result<()> {
-        let _msg = self
-            .utils
-            .http_client
-            .create_message(channel)
-            .allowed_mentions(Some(
-                &AllowedMentionsBuilder::new()
-                    .user_ids(users.into_iter().copied())
-                    .build(),
-            ))
-            .embeds(&[EmbedBuilder::new()
-                .description(
-                    "**Thank you for using Runback. \
-                        Below are a list of commands to assist you during your matches.**",
-                )
-                .field(
-                    EmbedFieldBuilder::new(
-                        "/matchmaking report",
-                        "Report the score for your match",
-                    )
-                    .build(),
-                )
-                .field(
-                    EmbedFieldBuilder::new(
-                        "/matchmaking done",
-                        "Finish matchmaking and finalize results",
-                    )
-                    .build(),
-                )
-                .field(
-                    EmbedFieldBuilder::new(
-                        "/matchmaking settings",
-                        "Set the settings of the lobby.",
-                    )
-                    .build(),
-                )
-                .validate()?
-                .build()])?
-            .await?;
-
-        Ok(())
-    }
-
-    async fn start_matchmaking_thread(
-        &self,
-        guild: Id<GuildMarker>,
-        channel: Id<ChannelMarker>,
-    ) -> anyhow::Result<Channel> {
-        let settings = self.utils.get_guild_settings(guild).await?;
-
-        let channel = if let Some(channel) = settings.channel_id {
-            channel.into_id()
-        } else {
-            channel
-        };
-
-        let thread = self
-            .utils
-            .http_client
-            .create_thread(channel, "dummy channel", PublicThread)?
-            .auto_archive_duration(AutoArchiveDuration::Day)
-            .await?
-            .model()
-            .await?;
-
-        return Ok(thread);
-    }
 
     async fn add_users_to_thread(
         &self,

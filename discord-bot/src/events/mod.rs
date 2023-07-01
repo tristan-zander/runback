@@ -97,6 +97,12 @@ impl From<&str> for LobbyError {
     }
 }
 
+impl From<String> for LobbyError {
+    fn from(value: String) -> Self {
+        LobbyError(value)
+    }
+}
+
 impl std::fmt::Display for LobbyError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
