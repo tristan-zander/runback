@@ -3,12 +3,16 @@ use std::sync::Arc;
 use bot::{
     entity::prelude::*,
     events::{Lobby, LobbyCommand},
+    queries::LobbyQuery,
     services::LobbyService,
 };
 
 use chrono::Utc;
-use cqrs_es::{persist::PersistedEventStore, CqrsFramework};
-use postgres_es::PostgresEventRepository;
+use cqrs_es::{
+    persist::{GenericQuery, PersistedEventStore},
+    CqrsFramework,
+};
+use postgres_es::{PostgresEventRepository, PostgresViewRepository};
 use sea_orm::prelude::Uuid;
 use twilight_http::client::ClientBuilder;
 use twilight_model::{
@@ -41,6 +45,7 @@ impl AsRef<ApplicationCommandData> for LobbyData {
 pub struct LobbyCommandHandler {
     utils: Arc<CommonUtilities>,
     lobby_events: CqrsFramework<Lobby, PersistedEventStore<PostgresEventRepository, Lobby>>,
+    lobby_view: LobbyQuery,
 }
 
 impl LobbyCommandHandler {
@@ -51,10 +56,12 @@ impl LobbyCommandHandler {
                 .build(),
         );
         let lobby_events = create_event_handler::<Lobby>(lobby_service).await;
+        let lobby_view = todo!();
 
         Self {
             utils,
             lobby_events,
+            lobby_view,
         }
     }
 
@@ -65,8 +72,14 @@ impl LobbyCommandHandler {
                 self.open_lobby(data).await?;
             }
             "close" => {
-                let lobby = self.get_lobby(data.data.guild_id).await?;
-                self.close_lobby(&lobby).await?;
+                self.close_lobby(
+                    data.data.user.id,
+                    data.data
+                        .interaction
+                        .channel_id
+                        .ok_or_else(|e| anyhow!("Channel ID was expected but not found."))?,
+                )
+                .await?;
             }
             "settings" => {
                 unimplemented!()
@@ -107,13 +120,6 @@ impl LobbyCommandHandler {
         Ok(())
     }
 
-    async fn get_lobby(
-        &self,
-        _guild_id: Id<GuildMarker>,
-    ) -> Result<matchmaking_lobbies::Model, anyhow::Error> {
-        unimplemented!()
-    }
-
     async fn invite(&self) {}
 
     async fn add_users_to_thread(
@@ -133,24 +139,11 @@ impl LobbyCommandHandler {
         Ok(())
     }
 
-    async fn close_lobby(&self, lobby: &matchmaking_lobbies::Model) -> anyhow::Result<()> {
-        let _update_res = matchmaking_invitation::Entity::update_many()
-            .filter(matchmaking_invitation::Column::Lobby.eq(lobby.id))
-            .filter(matchmaking_invitation::Column::ExpiresAt.gt(Utc::now()))
-            .set(matchmaking_invitation::ActiveModel {
-                expires_at: Set(Utc::now()),
-                ..Default::default()
-            })
-            .exec(self.utils.db_ref())
-            .await?;
-
-        let _update_res = MatchmakingLobbies::update(matchmaking_lobbies::ActiveModel {
-            id: Set(lobby.id),
-            ended_at: Set(Some(Utc::now())),
-            ..Default::default()
-        })
-        .exec(self.utils.db_ref())
-        .await?;
-        Ok(())
+    async fn close_lobby(
+        &self,
+        owner: Id<UserMarker>,
+        channel: Id<ChannelMarker>,
+    ) -> anyhow::Result<()> {
+        unimplemented!()
     }
 }

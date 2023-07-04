@@ -1,5 +1,13 @@
-use cqrs_es::{Aggregate, EventEnvelope, Query};
-use serde::Serialize;
+use chrono::{DateTime, Utc};
+use cqrs_es::{persist::GenericQuery, Aggregate, EventEnvelope, Query, View};
+use postgres_es::PostgresViewRepository;
+use serde::{Deserialize, Serialize};
+use twilight_model::id::{
+    marker::{ChannelMarker, UserMarker},
+    Id,
+};
+
+use crate::events::Lobby;
 
 pub struct DiscordEventQuery {}
 
@@ -12,6 +20,38 @@ impl<T: Aggregate + Serialize> Query<T> for DiscordEventQuery {
                 aggregate_id,
                 serde_json::to_string(&event.payload).unwrap()
             );
+        }
+    }
+}
+
+pub type LobbyQuery = GenericQuery<PostgresViewRepository<LobbyView, Lobby>, LobbyView, Lobby>;
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct LobbyView {
+    pub owner: Id<UserMarker>,
+    pub players: Vec<Id<UserMarker>>,
+    pub opened: DateTime<Utc>,
+    pub closed: Option<DateTime<Utc>>,
+    pub channel: Id<ChannelMarker>,
+}
+
+impl View<Lobby> for LobbyView {
+    fn update(&mut self, event: &EventEnvelope<Lobby>) {
+        match event.payload {
+            crate::events::LobbyEvent::LobbyOpened {
+                owner_id,
+                channel_id,
+            } => {
+                self.owner = Id::new(owner_id);
+                self.channel = Id::new(channel_id);
+                self.players.push(self.owner);
+            }
+            crate::events::LobbyEvent::LobbyClosed { at } => {
+                self.closed = Some(at);
+            }
+            crate::events::LobbyEvent::PlayerAddedToLobby { player_id } => {
+                self.players.push(Id::new(player_id));
+            }
         }
     }
 }

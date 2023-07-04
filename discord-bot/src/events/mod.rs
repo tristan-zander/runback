@@ -39,7 +39,7 @@ impl Aggregate for Lobby {
                 }]);
             }
             LobbyCommand::CloseLobby {} => {
-                return Ok(vec![LobbyEvent::LobbyClosed {}]);
+                return Ok(vec![LobbyEvent::LobbyClosed { at: Utc::now() }]);
             }
             LobbyCommand::AddPlayerToLobby { player_id } => {
                 return Ok(vec![LobbyEvent::PlayerAddedToLobby { player_id }]);
@@ -61,8 +61,8 @@ impl Aggregate for Lobby {
                 self.opened = Utc::now();
                 self.players.push(owner_id.to_string());
             }
-            LobbyEvent::LobbyClosed {} => {
-                self.closed = Some(Utc::now());
+            LobbyEvent::LobbyClosed { at } => {
+                self.closed = Some(at);
             }
             LobbyEvent::PlayerAddedToLobby { player_id } => {
                 self.players.push(player_id.to_string());
@@ -84,7 +84,7 @@ pub enum LobbyCommand {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum LobbyEvent {
     LobbyOpened { owner_id: u64, channel_id: u64 },
-    LobbyClosed {},
+    LobbyClosed { at: DateTime<Utc> },
     PlayerAddedToLobby { player_id: u64 },
 }
 
