@@ -26,13 +26,27 @@ impl<T: Aggregate + Serialize> Query<T> for DiscordEventQuery {
 
 pub type LobbyQuery = GenericQuery<PostgresViewRepository<LobbyView, Lobby>, LobbyView, Lobby>;
 
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct LobbyView {
     pub owner: Id<UserMarker>,
     pub players: Vec<Id<UserMarker>>,
     pub opened: DateTime<Utc>,
     pub closed: Option<DateTime<Utc>>,
     pub channel: Id<ChannelMarker>,
+}
+
+impl Default for LobbyView {
+    fn default() -> Self {
+        Self {
+            /// SAFETY: Discord will throw us an error if it's passesd an Id of 0.
+            /// These IDs are required fields so it's almost guaranteed to be replaced by a real value.
+            owner: unsafe { Id::new_unchecked(0) },
+            players: Default::default(),
+            opened: Default::default(),
+            closed: Default::default(),
+            channel: unsafe { Id::new_unchecked(0) },
+        }
+    }
 }
 
 impl View<Lobby> for LobbyView {
