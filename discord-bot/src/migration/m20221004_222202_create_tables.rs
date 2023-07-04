@@ -1,8 +1,5 @@
 use crate::entity::{
-    prelude::*,
-    sea_orm::{sea_query::extension::postgres::Type, ConnectionTrait, Statement},
-    sea_orm_active_enums::LobbyPrivacy,
-    *,
+    prelude::*, sea_orm::sea_query::extension::postgres::Type, sea_orm_active_enums::LobbyPrivacy,
 };
 use crate::migration::deprecated::*;
 use sea_orm_migration::prelude::*;

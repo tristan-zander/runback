@@ -14,5 +14,5 @@ extern crate async_trait;
 extern crate anyhow;
 
 pub mod events;
-pub mod services;
 pub mod queries;
+pub mod services;

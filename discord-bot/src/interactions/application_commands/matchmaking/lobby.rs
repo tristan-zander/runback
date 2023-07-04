@@ -109,7 +109,7 @@ impl LobbyCommandHandler {
 
     async fn get_lobby(
         &self,
-        guild_id: Id<GuildMarker>,
+        _guild_id: Id<GuildMarker>,
     ) -> Result<matchmaking_lobbies::Model, anyhow::Error> {
         unimplemented!()
     }

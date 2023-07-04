@@ -5,9 +5,9 @@ use twilight_cache_inmemory::InMemoryCache;
 use twilight_model::{
     application::interaction::Interaction,
     guild::Guild,
-    http::interaction::{InteractionResponse, InteractionResponseData},
+    http::interaction::InteractionResponse,
     id::{
-        marker::{ApplicationMarker, GuildMarker, InteractionMarker, UserMarker},
+        marker::{ApplicationMarker, GuildMarker, UserMarker},
         Id,
     },
     user::{CurrentUser, User},
@@ -169,8 +169,7 @@ impl CommonUtilities {
     }
 
     pub async fn ack(&self, interaction_token: &str) -> anyhow::Result<()> {
-        self
-            .http_client
+        self.http_client
             .interaction(self.application_id)
             .delete_response(interaction_token)
             .await?;

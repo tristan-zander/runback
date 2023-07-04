@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use cqrs_es::{DomainEvent, Aggregate};
+use cqrs_es::{Aggregate, DomainEvent};
 use serde::{Deserialize, Serialize};
 
 use crate::services::LobbyService;
@@ -11,7 +11,7 @@ pub struct Lobby {
     players: Vec<String>,
     opened: DateTime<Utc>,
     closed: Option<DateTime<Utc>>,
-    channel: u64
+    channel: u64,
 }
 
 #[async_trait]
@@ -25,14 +25,21 @@ impl Aggregate for Lobby {
         stringify!(Lobby).to_string()
     }
 
-    async fn handle(&self, command: Self::Command, services: &Self::Services) -> Result<Vec<Self::Event>, Self::Error> {
+    async fn handle(
+        &self,
+        command: Self::Command,
+        services: &Self::Services,
+    ) -> Result<Vec<Self::Event>, Self::Error> {
         match command {
             LobbyCommand::OpenLobby { owner_id, channel } => {
                 services.open_lobby(owner_id, channel).await?;
-                return Ok(vec![LobbyEvent::LobbyOpened { owner_id, channel_id: channel }]);
+                return Ok(vec![LobbyEvent::LobbyOpened {
+                    owner_id,
+                    channel_id: channel,
+                }]);
             }
-            LobbyCommand::CloseLobby { } => {
-                return Ok(vec![ LobbyEvent::LobbyClosed {  } ]);
+            LobbyCommand::CloseLobby {} => {
+                return Ok(vec![LobbyEvent::LobbyClosed {}]);
             }
             LobbyCommand::AddPlayerToLobby { player_id } => {
                 return Ok(vec![LobbyEvent::PlayerAddedToLobby { player_id }]);
@@ -45,13 +52,16 @@ impl Aggregate for Lobby {
 
     fn apply(&mut self, event: Self::Event) {
         match event {
-            LobbyEvent::LobbyOpened { owner_id, channel_id } => {
+            LobbyEvent::LobbyOpened {
+                owner_id,
+                channel_id,
+            } => {
                 self.owner_id = owner_id.to_string();
                 self.channel = channel_id;
                 self.opened = Utc::now();
                 self.players.push(owner_id.to_string());
             }
-            LobbyEvent::LobbyClosed {  } => {
+            LobbyEvent::LobbyClosed {} => {
                 self.closed = Some(Utc::now());
             }
             LobbyEvent::PlayerAddedToLobby { player_id } => {
@@ -67,7 +77,7 @@ impl Aggregate for Lobby {
 #[derive(Serialize, Deserialize)]
 pub enum LobbyCommand {
     OpenLobby { owner_id: u64, channel: u64 },
-    CloseLobby {  },
+    CloseLobby {},
     AddPlayerToLobby { player_id: u64 },
 }
 
@@ -75,7 +85,7 @@ pub enum LobbyCommand {
 pub enum LobbyEvent {
     LobbyOpened { owner_id: u64, channel_id: u64 },
     LobbyClosed {},
-    PlayerAddedToLobby { player_id: u64 }
+    PlayerAddedToLobby { player_id: u64 },
 }
 
 impl DomainEvent for LobbyEvent {

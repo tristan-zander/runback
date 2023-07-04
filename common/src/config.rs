@@ -1,7 +1,5 @@
 use std::path::Path;
 
-use reqwest::Url;
-
 use crate::logging::{LogDriver, LogLevel};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

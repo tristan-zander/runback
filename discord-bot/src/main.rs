@@ -13,13 +13,12 @@ extern crate tokio;
 
 use bot::{
     entity::sea_orm::{ConnectOptions, Database, DatabaseConnection},
-    events::Lobby,
-    services::LobbyService, queries::DiscordEventQuery,
+    queries::DiscordEventQuery,
 };
 use config::Config;
-use cqrs_es::{mem_store::MemStore, persist::PersistedEventStore, CqrsFramework, Aggregate};
+use cqrs_es::{persist::PersistedEventStore, Aggregate, CqrsFramework};
 use error::RunbackError;
-use figment::providers::Data;
+
 use futures::{
     future::select,
     stream::{FuturesUnordered, StreamExt},
@@ -32,7 +31,7 @@ use tokio::signal::unix::{signal, SignalKind};
 use tracing_subscriber::EnvFilter;
 use twilight_cache_inmemory::{InMemoryCache, ResourceType};
 use twilight_gateway::{Cluster, Intents};
-use twilight_http::{client::ClientBuilder, Client};
+
 use twilight_standby::Standby;
 
 use twilight_model::gateway::{
@@ -381,8 +380,8 @@ async fn create_event_handler<T: Aggregate>(
     let pool = default_postgress_pool(connection_string.as_str()).await;
     let repo = PostgresEventRepository::new(pool);
     let store = PersistedEventStore::<PostgresEventRepository, T>::new_event_store(repo);
-    let query = Box::new(DiscordEventQuery{});
-    let event_store = PostgresCqrs::new(store, vec![ query ], service);
+    let query = Box::new(DiscordEventQuery {});
+    let event_store = PostgresCqrs::new(store, vec![query], service);
 
     event_store
 }

@@ -1,8 +1,8 @@
 mod lobby;
 
 use bot::entity::{self, prelude::*, IdWrapper};
-use chrono::{DateTime, FixedOffset, Utc};
-use sea_orm::{prelude::*, IntoActiveModel, Set};
+use chrono::Utc;
+use sea_orm::{prelude::*, Set};
 use tokio::task::JoinHandle;
 use twilight_gateway::Event;
 use twilight_model::{
@@ -14,24 +14,19 @@ use twilight_model::{
         message::{
             allowed_mentions::AllowedMentionsBuilder,
             component::{ActionRow, Button, ButtonStyle},
-            Component, MessageFlags,
+            Component,
         },
-        thread::{AutoArchiveDuration, ThreadMember},
+        thread::ThreadMember,
         Channel, ChannelType, Message,
     },
     gateway::payload::incoming::ChannelDelete,
-    guild::{Guild, Member},
-    http::interaction::{InteractionResponse, InteractionResponseType},
-    id::{
-        marker::{ChannelMarker, GuildMarker, MessageMarker, UserMarker},
-        Id,
-    },
+    guild::Guild,
+    id::{marker::UserMarker, Id},
     user::User,
 };
 use twilight_util::builder::{
-    command::{CommandBuilder, IntegerBuilder, SubCommandBuilder, SubCommandGroupBuilder},
+    command::{CommandBuilder, SubCommandBuilder, SubCommandGroupBuilder},
     embed::{EmbedBuilder, EmbedFieldBuilder},
-    InteractionResponseDataBuilder,
 };
 
 use crate::interactions::application_commands::matchmaking::lobby::LobbyData;
@@ -261,7 +256,7 @@ impl InteractionHandler for MatchmakingCommandHandler {
                         .channel_id
                         .ok_or_else(|| anyhow!("command was not run in a channel"))?;
                 }
-                let msg = self
+                let _msg = self
                     .utils
                     .http_client
                     .interaction(self.utils.application_id)
@@ -375,11 +370,11 @@ impl InteractionHandler for MatchmakingCommandHandler {
             .member
             .ok_or_else(|| anyhow!("command cannot be run in a DM"))?;
 
-        let user = member
+        let _user = member
             .user
             .ok_or_else(|| anyhow!("could not get user data for caller"))?;
 
-        let guild_id = data
+        let _guild_id = data
             .interaction
             .guild_id
             .ok_or_else(|| anyhow!("Command cannot be run in a DM"))?;
@@ -675,7 +670,7 @@ impl MatchmakingCommandHandler {
                 .one(self.utils.db_ref())
                 .await?
                 .ok_or_else(|| anyhow!("no user found with that id"))?;
-            let res = self
+            let _res = self
                 .dm_invited(
                     author
                         .discord_user
@@ -1020,7 +1015,7 @@ impl BackgroundLoop {
             .one(self.utils.db_ref())
             .await?;
 
-        if let Some(lobby) = lobby {
+        if let Some(_lobby) = lobby {
             // Delete the lobby and de-activate all invitations.
             // self.close_lobby(&lobby).await?;
             unimplemented!("close the lobby")

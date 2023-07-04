@@ -38,7 +38,7 @@ impl InteractionHandler for MatchmakingSettingsHandler {
     }
 
     async fn process_command(&self, data: Box<ApplicationCommandData>) -> anyhow::Result<()> {
-        let command = &data.command;
+        let _command = &data.command;
         // VERIFY: Is it possible that we can send the information of other guilds here?
         debug!(data = ?format!("{:?}", data.command));
 

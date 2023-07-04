@@ -71,7 +71,7 @@ impl LobbyService {
         unimplemented!();
     }
 
-    pub async fn add_player_to_lobby(&self, lobby: Lobby) -> Result<(), LobbyError> {
+    pub async fn add_player_to_lobby(&self, _lobby: Lobby) -> Result<(), LobbyError> {
         unimplemented!();
     }
 
