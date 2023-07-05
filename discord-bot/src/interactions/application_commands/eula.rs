@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use bot::entity::prelude::*;
+use crate::entity::prelude::*;
 
 use chrono::Utc;
 use sea_orm::{prelude::*, IntoActiveModel, Set};
@@ -13,21 +13,33 @@ use twilight_model::{
 use twilight_util::builder::command::{CommandBuilder, StringBuilder};
 use twilight_util::builder::InteractionResponseDataBuilder as CallbackDataBuilder;
 
+use crate::{
+    client::{DiscordClient, RunbackClient},
+    db::RunbackDB,
+};
+
 use super::{
-    ApplicationCommandData, CommandGroupDescriptor, CommonUtilities, InteractionHandler,
-    MessageComponentData,
+    ApplicationCommandData, CommandGroupDescriptor, InteractionHandler, MessageComponentData,
 };
 
 // TODO: Make a distinct EULA for the bot itself
 const EULA: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../", "EULA.md"));
 
 pub struct EulaCommandHandler {
-    pub utils: Arc<CommonUtilities>,
+    db: RunbackDB,
+    client: DiscordClient,
 }
 
 #[async_trait]
 impl InteractionHandler for EulaCommandHandler {
-    fn describe(&self) -> CommandGroupDescriptor {
+    fn create(client: &RunbackClient) -> Self {
+        Self {
+            db: client.db(),
+            client: client.discord_client.clone(),
+        }
+    }
+
+    fn describe() -> CommandGroupDescriptor {
         let builder = CommandBuilder::new("eula", "Show the EULA", CommandType::ChatInput)
             .dm_permission(false)
             .default_member_permissions(Permissions::MANAGE_GUILD)
@@ -62,7 +74,7 @@ impl InteractionHandler for EulaCommandHandler {
                 ),
                 kind: InteractionResponseType::ChannelMessageWithSource,
             };
-            self.utils
+            self.client
                 .send_message(&data.interaction, &message)
                 .await
                 .map_err(|e| anyhow!("Could not send message: {}", e))?;
@@ -84,7 +96,7 @@ impl InteractionHandler for EulaCommandHandler {
                         ),
                             kind: InteractionResponseType::ChannelMessageWithSource,
                     };
-                        self.utils
+                        self.client
                             .send_message(&data.interaction, &message)
                             .await
                             .map_err(|e| anyhow!("Could not send message: {}", e))?;
@@ -98,7 +110,7 @@ impl InteractionHandler for EulaCommandHandler {
                     }
 
                     let res = MatchmakingSettings::find_by_id(gid.into())
-                        .one(self.utils.db_ref())
+                        .one(self.db.connection())
                         .await?;
                     match res {
                         Some(existing_settings) => {
@@ -112,7 +124,7 @@ impl InteractionHandler for EulaCommandHandler {
                                     ),
                                     kind: InteractionResponseType::ChannelMessageWithSource,
                                 };
-                                self.utils
+                                self.client
                                     .send_message(&data.interaction, &message)
                                     .await
                                     .map_err(|e| anyhow!("Could not send message: {}", e))?;
@@ -120,7 +132,7 @@ impl InteractionHandler for EulaCommandHandler {
                             } else {
                                 let mut active = existing_settings.into_active_model();
                                 active.has_accepted_eula = Set(Some(Utc::now()));
-                                let db_ref = self.utils.db_ref();
+                                let db_ref = self.db.connection();
                                 async move { active.update(db_ref).await }.await?;
                             }
                         }
@@ -132,7 +144,7 @@ impl InteractionHandler for EulaCommandHandler {
                                 ..Default::default()
                             };
 
-                            settings.insert(self.utils.db_ref()).await?;
+                            settings.insert(self.db.connection()).await?;
                         }
                     };
 
@@ -142,7 +154,7 @@ impl InteractionHandler for EulaCommandHandler {
                                 .flags(MessageFlags::EPHEMERAL)
                                 .build(),
                         )};
-                    self.utils
+                    self.client
                         .send_message(&data.interaction, &message)
                         .await
                         .map_err(|e| anyhow!("Could not send message: {}", e))?;
@@ -161,7 +173,7 @@ impl InteractionHandler for EulaCommandHandler {
             ),
         };
 
-        self.utils
+        self.client
             .send_message(&data.interaction, &message)
             .await
             .map_err(|e| anyhow!("Could not send message: {}", e))?;
@@ -179,11 +191,5 @@ impl InteractionHandler for EulaCommandHandler {
 
     async fn process_component(&self, _data: Box<MessageComponentData>) -> anyhow::Result<()> {
         unreachable!()
-    }
-}
-
-impl EulaCommandHandler {
-    pub fn new(utils: Arc<CommonUtilities>) -> Self {
-        Self { utils }
     }
 }

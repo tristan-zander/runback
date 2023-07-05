@@ -5,9 +5,6 @@ pub mod eula;
 #[deprecated(note = "Revisiting this later")]
 pub mod lfg {}
 pub mod matchmaking;
-pub mod utils;
-
-pub use utils::CommonUtilities;
 
 use sea_orm::prelude::*;
 use twilight_model::{
@@ -23,6 +20,8 @@ use twilight_model::{
     user::User,
 };
 
+use crate::client::RunbackClient;
+
 /// Describes a group of commands. This is mainly used
 /// for structural purposes, and for the `/help` command
 #[derive(Debug, Clone)]
@@ -37,7 +36,12 @@ pub struct CommandGroupDescriptor {
 
 #[async_trait]
 pub trait InteractionHandler {
-    fn describe(&self) -> CommandGroupDescriptor;
+    fn create(client: &RunbackClient) -> Self
+    where
+        Self: Sized;
+    fn describe() -> CommandGroupDescriptor
+    where
+        Self: Sized;
     async fn process_command(&self, data: Box<ApplicationCommandData>) -> anyhow::Result<()>;
     async fn process_autocomplete(&self, data: Box<ApplicationCommandData>) -> anyhow::Result<()>;
     async fn process_modal(&self, data: Box<ApplicationCommandData>) -> anyhow::Result<()>;

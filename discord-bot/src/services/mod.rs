@@ -5,7 +5,6 @@
 
 use std::num::NonZeroU64;
 
-use twilight_http::Client;
 use twilight_model::{
     channel::message::allowed_mentions::AllowedMentionsBuilder,
     id::{
@@ -15,15 +14,15 @@ use twilight_model::{
 };
 use twilight_util::builder::embed::{EmbedBuilder, EmbedFieldBuilder};
 
-use crate::events::*;
+use crate::{client::DiscordClient, events::*};
 
 /// Contains core logic for interacting with a lobby.
 pub struct LobbyService {
-    discord: Client,
+    discord: DiscordClient,
 }
 
 impl LobbyService {
-    pub fn new(client: Client) -> Self {
+    pub fn new(client: DiscordClient) -> Self {
         Self { discord: client }
     }
 

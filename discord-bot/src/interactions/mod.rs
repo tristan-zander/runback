@@ -3,7 +3,7 @@ pub mod panels;
 
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use bot::entity::sea_orm::prelude::Uuid;
+use crate::entity::sea_orm::prelude::Uuid;
 
 use futures::future::BoxFuture;
 use tokio::time::timeout;
@@ -14,12 +14,16 @@ use twilight_model::{
     channel::message::MessageFlags,
     gateway::payload::incoming::InteractionCreate,
     http::interaction::{InteractionResponse, InteractionResponseType},
-    id::{marker::CommandMarker, Id},
+    id::{
+        marker::{CommandMarker, GuildMarker},
+        Id,
+    },
 };
 use twilight_util::builder::embed::{EmbedBuilder, EmbedFieldBuilder, EmbedFooterBuilder};
 
-use crate::interactions::application_commands::{
-    ApplicationCommandData, CommonUtilities, MessageComponentData,
+use crate::{
+    client::DiscordClient,
+    interactions::application_commands::{ApplicationCommandData, MessageComponentData},
 };
 
 use self::application_commands::{
@@ -30,76 +34,64 @@ use self::application_commands::{
 type HandlerType = Arc<Box<dyn InteractionHandler + Send + Sync + 'static>>;
 
 pub struct InteractionProcessor {
-    utils: Arc<CommonUtilities>,
     application_command_handlers: HashMap<Id<CommandMarker>, HandlerType>,
     component_handlers: HashMap<&'static str, HandlerType>,
     commands: Vec<Command>,
     command_groups: Vec<CommandGroupDescriptor>,
+    discord_client: DiscordClient,
 }
 
 impl InteractionProcessor {
-    pub async fn init(utils: Arc<CommonUtilities>) -> anyhow::Result<Self> {
+    pub fn new(discord_client: DiscordClient) -> Self {
+        Self {
+            application_command_handlers: Default::default(),
+            component_handlers: Default::default(),
+            commands: Default::default(),
+            command_groups: Default::default(),
+            discord_client,
+        }
+    }
+
+    #[instrument(name = "init interaction processor", skip_all)]
+    pub async fn init(&mut self, debug_guild: Option<Id<GuildMarker>>) -> anyhow::Result<()> {
         event!(Level::INFO, "Registering top-level command handlers");
 
-        let top_level_handlers: Vec<Arc<Box<dyn InteractionHandler + Send + Sync + 'static>>> = vec![
-            Arc::new(Box::new(AdminCommandHandler::new(utils.clone()))),
-            Arc::new(Box::new(
-                MatchmakingCommandHandler::new(utils.clone()).await,
-            )),
-            // Arc::new(Box::new(EulaCommandHandler::new(utils.clone()))),
-            // Arc::new(Box::new(LfgCommandHandler {
-            //     utils: utils.clone(),
-            //     lfg_sessions,
-            // })),
+        let top_level_handlers = [
+            AdminCommandHandler::describe(),
+            MatchmakingCommandHandler::describe(),
         ];
 
-        let mut this = Self {
-            commands: Vec::new(),
-            command_groups: Vec::with_capacity(top_level_handlers.len()),
-            utils,
-            application_command_handlers: HashMap::new(),
-            component_handlers: HashMap::new(),
-        };
+        self.register_commands(top_level_handlers, debug_guild)
+            .await?;
 
-        this.register_commands(top_level_handlers).await?;
-
-        Ok(this)
+        Ok(())
     }
 
     // Man this is so ugly
-    async fn register_commands(
+    async fn register_commands<T>(
         &mut self,
-        handlers: Vec<Arc<Box<dyn InteractionHandler + Send + Sync + 'static>>>,
-    ) -> anyhow::Result<()> {
-        let groups = handlers
-            .into_iter()
-            .map(|h| (h.clone(), h.describe()))
-            .collect::<Vec<_>>();
-
+        describes: T,
+        debug_guild_id: Option<Id<GuildMarker>>,
+    ) -> anyhow::Result<()>
+    where
+        T: IntoIterator<Item = CommandGroupDescriptor>,
+    {
         self.commands = {
-            let commands = groups
-                .iter()
-                .flat_map(|grp| {
-                    grp.1
-                        .commands
-                        .iter()
-                        .map(std::clone::Clone::clone)
-                        .collect::<Vec<Command>>()
-                })
+            let commands = describes
+                .into_iter()
+                .flat_map(|d| d.commands.as_ref().to_owned())
                 .collect::<Vec<_>>();
 
-            if let Some(debug_guild) = crate::CONFIG.debug_guild_id {
-                self.utils
-                    .http_client
-                    .interaction(self.utils.application_id)
+            if let Some(debug_guild) = debug_guild_id {
+                self.discord_client
+                    .interaction()
                     .set_guild_commands(debug_guild, commands.as_slice())
                     .await?
                     .models()
                     .await?
             } else {
-                self.utils
-                    .http_client
-                    .interaction(self.utils.application_id)
+                self.discord_client
+                    .interaction()
                     .set_global_commands(commands.as_slice())
                     .await?
                     .models()
@@ -109,44 +101,42 @@ impl InteractionProcessor {
 
         debug!(commands = ?serde_json::to_string(&self.commands).unwrap(), "Sent commands to discord");
 
-        self.command_groups = groups.iter().map(|g| g.1.clone()).collect();
-        for (handler, descriptor) in groups {
-            debug!(desc = ?descriptor, name = ?descriptor.name, "descriptor");
-            let old = self
-                .component_handlers
-                .insert(descriptor.name, handler.clone());
+        // for descriptor in describes {
+        //     debug!(desc = ?descriptor, name = ?descriptor.name, "descriptor");
+        //     let old = self
+        //         .component_handlers
+        //         .insert(descriptor.name, handler.clone());
 
-            info!(name = ?descriptor.name, "inserting command handler");
+        //     info!(name = ?descriptor.name, "inserting command handler");
 
-            if let Some(_) = old {
-                return Err(anyhow!(
-                    "tried to overwrite a component handler: {}",
-                    descriptor.name
-                ));
-            }
+        //     if let Some(_) = old {
+        //         return Err(anyhow!(
+        //             "tried to overwrite a component handler: {}",
+        //             descriptor.name
+        //         ));
+        //     }
 
-            if let Some(command) = self.commands.iter().find(|c| c.name == descriptor.name) {
-                if let Some(old) = self.application_command_handlers.insert(
-                    command
-                        .id
-                        .ok_or_else(|| anyhow!("command does not have an id: {}", command.name))?,
-                    handler.clone(),
-                ) {
-                    return Err(anyhow!(
-                        "inserted a handler over a command... {:#?}",
-                        old.describe().name
-                    ));
-                }
-            } else {
-                warn!(name = ?descriptor.name, "no command found");
-            }
-        }
+        //     if let Some(command) = self.commands.iter().find(|c| c.name == descriptor.name) {
+        //         if let Some(old) = self.application_command_handlers.insert(
+        //             command
+        //                 .id
+        //                 .ok_or_else(|| anyhow!("command does not have an id: {}", command.name))?,
+        //             handler.clone(),
+        //         ) {
+        //             return Err(anyhow!(
+        //                 "inserted a handler over a command... {:#?}",
+        //                 old.describe().name
+        //             ));
+        //         }
+        //     } else {
+        //         warn!(name = ?descriptor.name, "no command found");
+        //     }
+        // }
 
         // Commands that are currently in Discord
         let global_commands = self
-            .utils
-            .http_client
-            .interaction(self.utils.application_id)
+            .discord_client
+            .interaction()
             .global_commands()
             .await?
             .models()
@@ -158,9 +148,8 @@ impl InteractionProcessor {
             } else {
                 // Remove the command from Discord. We're no longer going to support it
                 warn!(name = ?c.name, id = ?c.id, "unknown global command found on Discord");
-                self.utils
-                    .http_client
-                    .interaction(self.utils.application_id)
+                self.discord_client
+                    .interaction()
                     .delete_global_command(c.id.ok_or_else(|| anyhow!("global command has no ID"))?) // realistically, this error will never be shown
                     .await?;
             }
@@ -200,7 +189,7 @@ impl InteractionProcessor {
                     let fut = Box::pin(Self::execute_application_command(
                         handler.clone(),
                         data,
-                        self.utils.clone(),
+                        self.discord_client.clone(),
                     ));
                     return Ok(fut);
                 } else {
@@ -249,11 +238,10 @@ impl InteractionProcessor {
     async fn execute_application_command(
         handler: HandlerType,
         data: Box<ApplicationCommandData>,
-        utils: Arc<CommonUtilities>,
+        discord_client: DiscordClient,
     ) -> anyhow::Result<()> {
-        utils
-            .http_client
-            .interaction(utils.application_id)
+        discord_client
+            .interaction()
             .create_response(
                 data.interaction.id,
                 data.interaction.token.as_str(),
@@ -271,7 +259,7 @@ impl InteractionProcessor {
             Duration::from_secs(5),
             handler
                 .process_command(data)
-                .instrument(info_span!("command_handler")),
+                .instrument(info_span!("command_exec")),
         );
         let res = timeout.await;
         match res {
@@ -279,9 +267,8 @@ impl InteractionProcessor {
                 if let Err(e) = res {
                     error!(error = ?e, "Application Command Failed");
                     debug!(error = ?format!("{:?}", e), "Application Command Failed");
-                    utils
-                        .http_client
-                        .interaction(utils.application_id)
+                    discord_client
+                        .interaction()
                         .create_followup(token.as_str())
                         .flags(MessageFlags::EPHEMERAL)
                         .embeds(&[EmbedBuilder::new()
@@ -299,9 +286,8 @@ impl InteractionProcessor {
                 Ok(())
             }
             Err(_) => {
-                utils
-                    .http_client
-                    .interaction(utils.application_id)
+                discord_client
+                    .interaction()
                     .update_response(token.as_str())
                     .content(Some("Command timed out."))?
                     .await?;

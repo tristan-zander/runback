@@ -1,10 +1,9 @@
-use bot::entity;
-use bot::entity::prelude::*;
+use crate::entity::prelude::*;
 use twilight_model::channel::message::embed::EmbedField;
 use twilight_util::builder::{embed::EmbedBuilder, InteractionResponseDataBuilder};
 
 pub struct LobbyPanel<'a> {
-    pub lobbies: &'a [entity::matchmaking_lobbies::Model],
+    pub lobbies: &'a [matchmaking_lobbies::Model],
 }
 
 impl<'a> LobbyPanel<'a> {

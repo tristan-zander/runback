@@ -5,11 +5,10 @@ use twilight_model::channel::ChannelType;
 use twilight_model::guild::Permissions;
 use twilight_util::builder::command::{CommandBuilder, SubCommandBuilder, SubCommandGroupBuilder};
 
+use crate::client::RunbackClient;
 use crate::interactions::application_commands::{
     ApplicationCommandData, CommandGroupDescriptor, InteractionHandler, MessageComponentData,
 };
-
-use crate::interactions::application_commands::CommonUtilities;
 
 use super::mm_settings_handler::MatchmakingSettingsHandler;
 
@@ -21,7 +20,13 @@ pub struct AdminCommandHandler {
 
 #[async_trait]
 impl InteractionHandler for AdminCommandHandler {
-    fn describe(&self) -> CommandGroupDescriptor {
+    fn create(client: &RunbackClient) -> Self {
+        Self {
+            matchmaking_settings_handler: MatchmakingSettingsHandler::create(client),
+        }
+    }
+
+    fn describe() -> CommandGroupDescriptor {
         let builder = CommandBuilder::new(
             "admin",
             "Admin configuration and management settings",
@@ -157,16 +162,6 @@ impl InteractionHandler for AdminCommandHandler {
             }
         } else {
             return Err(anyhow!("Action did not match the format \"action:field\""));
-        }
-    }
-}
-
-impl AdminCommandHandler {
-    pub fn new(utils: Arc<CommonUtilities>) -> Self {
-        Self {
-            matchmaking_settings_handler: MatchmakingSettingsHandler::new(utils),
-            // matchmaking_panels_handler: MatchmakingPanelsHandler::new(utils.clone()),
-            // utils,
         }
     }
 }

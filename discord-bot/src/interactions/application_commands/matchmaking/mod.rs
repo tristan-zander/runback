@@ -1,7 +1,11 @@
 mod lobby;
 
-use bot::entity::{self, prelude::*, IdWrapper};
+use crate::{
+    db::RunbackDB,
+    entity::{self, prelude::*, IdWrapper},
+};
 use chrono::Utc;
+use futures::StreamExt;
 use sea_orm::{prelude::*, Set};
 use tokio::task::JoinHandle;
 use twilight_gateway::Event;
@@ -24,21 +28,22 @@ use twilight_model::{
     id::{marker::UserMarker, Id},
     user::User,
 };
+use twilight_standby::Standby;
 use twilight_util::builder::{
     command::{CommandBuilder, SubCommandBuilder, SubCommandGroupBuilder},
     embed::{EmbedBuilder, EmbedFieldBuilder},
 };
 
-use crate::interactions::application_commands::matchmaking::lobby::LobbyData;
+use crate::{
+    client::{DiscordClient, RunbackClient},
+    interactions::application_commands::matchmaking::lobby::LobbyData,
+};
 
 use self::lobby::LobbyCommandHandler;
 
 use super::{
-    ApplicationCommandData, CommandGroupDescriptor, CommonUtilities, InteractionHandler,
-    MessageComponentData,
+    ApplicationCommandData, CommandGroupDescriptor, InteractionHandler, MessageComponentData,
 };
-
-use futures::StreamExt;
 
 use std::{
     ops::Add,
@@ -47,14 +52,35 @@ use std::{
 };
 
 pub struct MatchmakingCommandHandler {
-    utils: Arc<CommonUtilities>,
+    db: RunbackDB,
+    client: DiscordClient,
     lobby: LobbyCommandHandler,
     _background_task: JoinHandle<()>,
 }
 
 #[async_trait]
 impl InteractionHandler for MatchmakingCommandHandler {
-    fn describe(&self) -> CommandGroupDescriptor {
+    fn create(client: &RunbackClient) -> Self {
+        let bg = BackgroundLoop::new(client);
+        let _background_task = tokio::task::spawn(async move {
+            loop {
+                if let Err(e) = bg.background_loop().await {
+                    error!(error = ?e, "background loop update failed");
+                }
+            }
+        });
+
+        let lobby = LobbyCommandHandler::new(client.discord_client.clone(), client.db());
+
+        Self {
+            db: client.db(),
+            client: client.discord_client.clone(),
+            lobby,
+            _background_task,
+        }
+    }
+
+    fn describe() -> CommandGroupDescriptor {
         let builder = CommandBuilder::new(
             "matchmaking".to_string(),
             "Matchmaking commands".to_string(),
@@ -157,7 +183,7 @@ impl InteractionHandler for MatchmakingCommandHandler {
 
                 let lobby = MatchmakingLobbies::find()
                     .filter(matchmaking_lobbies::Column::ChannelId.eq(IdWrapper::from(chan_id)))
-                    .one(self.utils.db_ref())
+                    .one(self.db.connection())
                     .await?;
 
                 if lobby.is_none() {
@@ -175,7 +201,7 @@ impl InteractionHandler for MatchmakingCommandHandler {
                     anyhow!("cannot get the user specified in \"report-score\" command")
                 })?;
 
-                let response = self.utils.http_client.channel(chan_id).await?;
+                let response = self.client.channel(chan_id).await?;
 
                 if !response.status().is_success() {
                     return Err(anyhow!("failed to get thread"));
@@ -184,8 +210,7 @@ impl InteractionHandler for MatchmakingCommandHandler {
                 let channel: Channel = response.model().await?;
 
                 let thread_members: Vec<ThreadMember> = self
-                    .utils
-                    .http_client
+                    .client
                     .thread_members(channel.id)
                     .await?
                     .models()
@@ -246,7 +271,7 @@ impl InteractionHandler for MatchmakingCommandHandler {
                 // TODO: Add an embed with options for the opponent to accept or dispute the score report.
                 // TODO: Format the message so it tags both the User & Opponent.
                 //       And show the wins for both of them in a nice looking way.
-                let guild_settings = self.utils.get_guild_settings(data.guild_id).await?;
+                let guild_settings = self.db.get_guild_settings(data.guild_id).await?;
                 let channel;
                 if let Some(cid) = guild_settings.channel_id {
                     channel = cid.into_id();
@@ -257,9 +282,8 @@ impl InteractionHandler for MatchmakingCommandHandler {
                         .ok_or_else(|| anyhow!("command was not run in a channel"))?;
                 }
                 let _msg = self
-                    .utils
-                    .http_client
-                    .interaction(self.utils.application_id)
+                    .client
+                    .interaction()
                     .create_followup(data.interaction.token.as_str())
                     .content(format!("**<@{}> vs <@{}>**", user.id, opponent.id).as_str())?
                     .embeds(&[EmbedBuilder::new()
@@ -308,16 +332,15 @@ impl InteractionHandler for MatchmakingCommandHandler {
 
                 let lobby = MatchmakingLobbies::find()
                     .filter(matchmaking_lobbies::Column::ChannelId.eq(IdWrapper::from(chan_id)))
-                    .one(self.utils.db_ref())
+                    .one(self.db.connection())
                     .await?;
 
                 if let Some(lobby) = lobby {
                     // TODO: Validate that the user is a part of the lobby.
 
                     match self
-                        .utils
-                        .http_client
-                        .interaction(self.utils.application_id)
+                        .client
+                        .interaction()
                         .create_followup(data.interaction.token.as_str())
                         .content("Closing the lobby soon. Thanks for using runback!")?
                         .await
@@ -328,9 +351,8 @@ impl InteractionHandler for MatchmakingCommandHandler {
                         }
                     }
 
-                    // self.utils.http_client.delete_channel(id).exec().await?;
-                    self.utils
-                        .http_client
+                    // self.client.delete_channel(id).exec().await?;
+                    self.client
                         .update_thread(chan_id)
                         .archived(true)
                         .locked(true)
@@ -342,7 +364,7 @@ impl InteractionHandler for MatchmakingCommandHandler {
                         ..Default::default()
                     })
                     .filter(matchmaking_lobbies::Column::TimeoutAfter.gte(Utc::now()))
-                    .exec(self.utils.db_ref())
+                    .exec(self.db.connection())
                     .await?;
                 } else {
                     return Err(anyhow!(
@@ -394,7 +416,7 @@ impl InteractionHandler for MatchmakingCommandHandler {
                 // let invitation = MatchmakingInvitation::find()
                 //     .filter(matchmaking_invitation::Column::MessageId.eq(IdWrapper::from(msg_id)))
                 //     .filter(matchmaking_invitation::Column::ChannelId.eq(IdWrapper::from(chan_id)))
-                //     .one(self.utils.db_ref())
+                //     .one(self.db.connection()())
                 //     .await?
                 //     .ok_or_else(|| anyhow!("could not find a valid invitation."))?;
                 //
@@ -423,7 +445,7 @@ impl InteractionHandler for MatchmakingCommandHandler {
                 // }
                 //
                 // let opponent = Users::find_by_id(invitation.invited_by)
-                //     .one(self.utils.db_ref())
+                //     .one(self.db.connection()())
                 //     .await?
                 //     .ok_or_else(|| {
                 //         anyhow!("could not find user information for the person that invited you")
@@ -478,7 +500,7 @@ impl InteractionHandler for MatchmakingCommandHandler {
                 // if let Err(e) = res {
                 //     // Close the thread and send an error.
                 //
-                //     self.utils.http_client.delete_channel(thread.id).await?;
+                //     self.client.delete_channel(thread.id).await?;
                 //
                 //     return Err(e);
                 // }
@@ -510,7 +532,7 @@ impl InteractionHandler for MatchmakingCommandHandler {
                 // }
                 //
                 // let _res = matchmaking_lobbies::Entity::insert(lobby.into_active_model())
-                //     .exec(self.utils.db_ref())
+                //     .exec(self.db.connection()())
                 //     .await?;
                 //
                 // self.utils
@@ -531,7 +553,7 @@ impl InteractionHandler for MatchmakingCommandHandler {
                 //
                 // let invitation = MatchmakingInvitation::find()
                 //     .filter(matchmaking_invitation::Column::MessageId.eq(IdWrapper::from(msg.id)))
-                //     .one(self.utils.db_ref())
+                //     .one(self.db.connection()())
                 //     .await?
                 //     .ok_or_else(|| anyhow!("could not find that match invitation"))?;
                 //
@@ -625,7 +647,7 @@ impl InteractionHandler for MatchmakingCommandHandler {
                 //     expires_at: Set(Utc::now()), // TODO: Set the invitation as "Denied"
                 //     ..Default::default()
                 // })
-                // .exec(self.utils.db_ref())
+                // .exec(self.db.connection()())
                 // .await?;
                 //
                 // Ok(())
@@ -637,37 +659,17 @@ impl InteractionHandler for MatchmakingCommandHandler {
 }
 
 impl MatchmakingCommandHandler {
-    pub async fn new(utils: Arc<CommonUtilities>) -> Self {
-        // TODO: Start a thread to keep track of the matchmaking instances.
-        let utils_bg = utils.clone();
-        let utils_lobby = utils.clone();
-        let background_task = tokio::task::spawn(async move {
-            let bg = BackgroundLoop::new(utils_bg);
-            loop {
-                if let Err(e) = bg.background_loop().await {
-                    error!(error = ?e, "background loop update failed");
-                }
-            }
-        });
-
-        Self {
-            utils,
-            _background_task: background_task,
-            lobby: LobbyCommandHandler::new(utils_lobby).await,
-        }
-    }
-
     async fn dm_users_upon_cancellation(
         &self,
         invitation: &matchmaking_invitation::Model,
         user: &User,
         guild: &Guild,
     ) -> anyhow::Result<()> {
-        let user_model = self.utils.find_or_create_user(user.id).await?;
+        let user_model = self.db.find_or_create_user(user.id).await?;
 
         if user_model.user_id != invitation.invited_by {
             let author = Users::find_by_id(invitation.invited_by)
-                .one(self.utils.db_ref())
+                .one(self.db.connection())
                 .await?
                 .ok_or_else(|| anyhow!("no user found with that id"))?;
             let _res = self
@@ -683,7 +685,7 @@ impl MatchmakingCommandHandler {
                 .await;
         } else {
             let user_model = Users::find_by_id(invitation.extended_to)
-                .one(self.utils.db_ref())
+                .one(self.db.connection())
                 .await?
                 .ok_or_else(|| anyhow!("no user found with that id"))?;
             self.dm_invited(
@@ -710,8 +712,7 @@ impl MatchmakingCommandHandler {
     ) -> anyhow::Result<Message> {
         // TODO: Cache this
         let dm = self
-            .utils
-            .http_client
+            .client
             .create_private_channel(user)
             .await?
             .model()
@@ -724,8 +725,7 @@ impl MatchmakingCommandHandler {
         );
 
         let msg = self
-            .utils
-            .http_client
+            .client
             .create_message(dm.id)
             .content(
                 format!(
@@ -743,13 +743,17 @@ impl MatchmakingCommandHandler {
 }
 
 struct BackgroundLoop {
-    utils: Arc<CommonUtilities>,
+    db: RunbackDB,
+    client: DiscordClient,
+    standby: Arc<Standby>,
 }
 
 impl BackgroundLoop {
-    fn new(utils: Arc<CommonUtilities>) -> Self {
+    fn new(client: &RunbackClient) -> Self {
         Self {
-            utils: utils.clone(),
+            db: client.db(),
+            client: client.discord_client.clone(),
+            standby: client.standby.clone(),
         }
     }
 
@@ -796,7 +800,7 @@ impl BackgroundLoop {
                     .lte(Utc::now().add(chrono::Duration::minutes(15))),
             )
             .filter(matchmaking_lobbies::Column::EndedAt.is_null())
-            .all(self.utils.db_ref())
+            .all(self.db.connection())
             .await?;
 
         Ok(lobbies)
@@ -812,7 +816,7 @@ impl BackgroundLoop {
         debug!(lobby = ?lobby.id, "extending lobby session");
 
         MatchmakingLobbies::update(lobby)
-            .exec(self.utils.db_ref())
+            .exec(self.db.connection())
             .await?;
 
         Ok(())
@@ -823,8 +827,7 @@ impl BackgroundLoop {
         s: &matchmaking_lobbies::Model,
     ) -> anyhow::Result<bool> {
         let chan = self
-            .utils
-            .http_client
+            .client
             .channel(s.channel_id.into_id())
             .await?
             .model()
@@ -834,8 +837,7 @@ impl BackgroundLoop {
             // If the user deleted the last message, then it's possible that the
             // last message id is going to return an invalid message.
             let msg = self
-                .utils
-                .http_client
+                .client
                 .message(chan.id, msg.cast())
                 .await?
                 .model()
@@ -851,7 +853,7 @@ impl BackgroundLoop {
             // Otherwise, send the expiration warning.
 
             if last_message_sent_at > (now - chrono::Duration::minutes(30))
-                && msg.author.id != self.utils.current_user.id
+                && msg.author.id != self.client.current_user.id
                 && s.timeout_warning_message
                     .as_ref()
                     .map_or(true, |id| id.into_id() != msg.id)
@@ -868,8 +870,7 @@ impl BackgroundLoop {
         s: &matchmaking_lobbies::Model,
     ) -> anyhow::Result<()> {
         let msg = self
-            .utils
-            .http_client
+        .client
             .create_message(s.channel_id.into_id())
             .content("This lobby will close in 15 minutes due to inactivity. Please click \"Extend\" or type in chat to extend the lobby.")?
             .components(&[
@@ -909,7 +910,7 @@ impl BackgroundLoop {
             timeout_warning_message: Set(Some(msg.id.into())),
             ..Default::default()
         })
-        .exec(self.utils.db_ref())
+        .exec(self.db.connection())
         .await?;
 
         Ok(())
@@ -921,23 +922,15 @@ impl BackgroundLoop {
         s: &entity::matchmaking_lobbies::Model,
     ) -> anyhow::Result<()> {
         let chan_id = s.channel_id.into_id();
-        let chan = self
-            .utils
-            .http_client
-            .channel(chan_id)
-            .await?
-            .model()
-            .await?;
+        let chan = self.client.channel(chan_id).await?.model().await?;
         let _msg = self
-            .utils
-            .http_client
+            .client
             .create_message(chan.id)
             .content("This matchmaking lobby has timed out. See ya later!")?
             .await?;
         if chan.kind.is_thread() {
             let _thread = self
-                .utils
-                .http_client
+                .client
                 .update_thread(chan.id)
                 .archived(true)
                 .locked(true)
@@ -953,7 +946,7 @@ impl BackgroundLoop {
             ended_at: Set(Some(Utc::now())),
             ..Default::default()
         })
-        .exec(self.utils.db_ref())
+        .exec(self.db.connection())
         .await?;
 
         Ok(())
@@ -963,7 +956,7 @@ impl BackgroundLoop {
         let lobbies = MatchmakingLobbies::find()
             .filter(matchmaking_lobbies::Column::TimeoutAfter.lte(Utc::now()))
             .filter(matchmaking_lobbies::Column::EndedAt.is_null())
-            .all(self.utils.db_ref())
+            .all(self.db.connection())
             .await?;
 
         Ok(lobbies)
@@ -973,8 +966,7 @@ impl BackgroundLoop {
     #[instrument(skip_all)]
     async fn background_loop(&self) -> anyhow::Result<()> {
         let mut stream = {
-            self.utils
-                .standby
+            self.standby
                 .wait_for_event_stream(move |e: &Event| match e {
                     Event::ChannelDelete(_) => true,
                     _ => false,
@@ -1012,7 +1004,7 @@ impl BackgroundLoop {
     async fn on_channel_delete(&self, chan: Box<ChannelDelete>) -> anyhow::Result<()> {
         let lobby = matchmaking_lobbies::Entity::find()
             .filter(matchmaking_lobbies::Column::ChannelId.eq(IdWrapper::from(chan.id)))
-            .one(self.utils.db_ref())
+            .one(self.db.connection())
             .await?;
 
         if let Some(_lobby) = lobby {

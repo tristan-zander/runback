@@ -1,6 +1,10 @@
 use std::sync::Arc;
 
-use bot::entity::prelude::*;
+use crate::{
+    client::{DiscordClient, RunbackClient},
+    db::RunbackDB,
+    entity::prelude::*,
+};
 
 use chrono::Utc;
 use sea_orm::{ActiveModelTrait, EntityTrait, IntoActiveModel, Set};
@@ -17,17 +21,24 @@ use twilight_model::{
 use twilight_util::builder::InteractionResponseDataBuilder;
 
 use crate::interactions::application_commands::{
-    ApplicationCommandData, CommandGroupDescriptor, CommonUtilities, InteractionHandler,
-    MessageComponentData,
+    ApplicationCommandData, CommandGroupDescriptor, InteractionHandler, MessageComponentData,
 };
 
 pub struct MatchmakingSettingsHandler {
-    utils: Arc<CommonUtilities>,
+    client: DiscordClient,
+    db: RunbackDB,
 }
 
 #[async_trait]
 impl InteractionHandler for MatchmakingSettingsHandler {
-    fn describe(&self) -> CommandGroupDescriptor {
+    fn create(client: &RunbackClient) -> Self {
+        Self {
+            db: client.db(),
+            client: client.discord_client.clone(),
+        }
+    }
+
+    fn describe() -> CommandGroupDescriptor {
         // This is not a top-level command handler.
         // This function should never be registered into the InteractionProcessor/
         CommandGroupDescriptor {
@@ -83,7 +94,7 @@ impl InteractionHandler for MatchmakingSettingsHandler {
         match subcommand.name.as_str() {
             "matchmaking-channel" => {
                 // Creates the guild settings object if it doens't exist
-                let settings = self.utils.get_guild_settings(data.guild_id).await?;
+                let settings = self.db.get_guild_settings(data.guild_id).await?;
 
                 let mut model = matchmaking_settings::ActiveModel {
                     guild_id: Set(settings.guild_id),
@@ -118,12 +129,11 @@ impl InteractionHandler for MatchmakingSettingsHandler {
                 }
 
                 MatchmakingSettings::update(model)
-                    .exec(self.utils.db_ref())
+                    .exec(self.db.connection())
                     .await?;
 
-                self.utils
-                    .http_client
-                    .interaction(self.utils.application_id)
+                self.client
+                    .interaction()
                     .create_followup(data.interaction.token.as_str())
                     .content(message.as_str())?
                     .flags(MessageFlags::EPHEMERAL)
@@ -132,7 +142,7 @@ impl InteractionHandler for MatchmakingSettingsHandler {
             }
             "admin-role" => {
                 // Creates the guild settings object if it doens't exist
-                let settings = self.utils.get_guild_settings(data.guild_id).await?;
+                let settings = self.db.get_guild_settings(data.guild_id).await?;
 
                 let mut model = matchmaking_settings::ActiveModel {
                     guild_id: Set(settings.guild_id),
@@ -162,12 +172,11 @@ impl InteractionHandler for MatchmakingSettingsHandler {
                 }
 
                 MatchmakingSettings::update(model)
-                    .exec(self.utils.db_ref())
+                    .exec(self.db.connection())
                     .await?;
 
-                self.utils
-                    .http_client
-                    .interaction(self.utils.application_id)
+                self.client
+                    .interaction()
                     .create_followup(data.interaction.token.as_str())
                     .content(message.as_str())?
                     .flags(MessageFlags::EPHEMERAL)
@@ -208,7 +217,7 @@ impl InteractionHandler for MatchmakingSettingsHandler {
             .as_ref()
             .ok_or_else(|| anyhow!("cannot get member data"))?;
 
-        let guild = self.utils.get_guild_settings(guild_id).await?;
+        let guild = self.db.get_guild_settings(guild_id).await?;
 
         // validate that the user has the proper permissions
         if !self.is_authorized_admin(member, guild.admin_role) {
@@ -246,10 +255,6 @@ impl InteractionHandler for MatchmakingSettingsHandler {
 }
 
 impl MatchmakingSettingsHandler {
-    pub fn new(utils: Arc<CommonUtilities>) -> Self {
-        Self { utils }
-    }
-
     async fn set_matchmaking_channel(&self, data: &MessageComponentData) -> anyhow::Result<()> {
         let channel_id: Id<ChannelMarker> = Id::new(
             data.message
@@ -266,13 +271,13 @@ impl MatchmakingSettingsHandler {
             .ok_or_else(|| anyhow!("You cannot use Runback in a DM."))?;
 
         let setting = MatchmakingSettings::find_by_id(guild_id.into())
-            .one(self.utils.db_ref())
+            .one(self.db.connection())
             .await?;
 
         let _setting = if setting.is_some() {
             let mut setting = unsafe { setting.unwrap_unchecked() }.into_active_model();
             setting.channel_id = Set(Some(channel_id.into()));
-            setting.update(self.utils.db_ref()).await?
+            setting.update(self.db.connection()).await?
         } else {
             let setting = matchmaking_settings::Model {
                 guild_id: guild_id.into(),
@@ -285,7 +290,7 @@ impl MatchmakingSettingsHandler {
             .into_active_model();
             setting
                 .into_active_model()
-                .insert(self.utils.db_ref())
+                .insert(self.db.connection())
                 .await?
         };
 
@@ -298,14 +303,11 @@ impl MatchmakingSettingsHandler {
         )};
 
         let _res =
-            self.utils
-            .http_client
-            .interaction(self.utils.application_id)
+            self. client           .interaction()
             .update_response(data.interaction.token.as_str())
             .content(Some("Successfully set the matchmaking channel. Please wait a few moments for changes to take effect"))?
             // .map_err(|e| RunbackError { message: "Could not set content for response message during set_matchmaking_channel()".to_owned(), inner: Some(Box::new(e)) })?
             // .(component.id, component.token.as_str(), &message)
-            .exec()
             .await?;
 
         Ok(())
@@ -322,7 +324,7 @@ impl MatchmakingSettingsHandler {
                 admin_role: Set(Some(role.into())),
                 ..Default::default()
             })
-            .exec(self.utils.db_ref())
+            .exec(self.db.connection())
             .await?,
         )
     }
@@ -330,7 +332,7 @@ impl MatchmakingSettingsHandler {
     fn is_authorized_admin(
         &self,
         member: &PartialMember,
-        role: Option<bot::entity::IdWrapper<RoleMarker>>,
+        role: Option<IdWrapper<RoleMarker>>,
     ) -> bool {
         if let Some(perms) = member.permissions {
             if perms.contains(Permissions::ADMINISTRATOR) {

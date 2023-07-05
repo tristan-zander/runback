@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
-use bot::{
+use crate::{
+    db::RunbackDB,
     entity::prelude::*,
     events::{Lobby, LobbyCommand},
     queries::LobbyQuery,
@@ -14,7 +15,6 @@ use cqrs_es::{
 };
 use postgres_es::{PostgresEventRepository, PostgresViewRepository};
 use sea_orm::prelude::Uuid;
-use twilight_http::client::ClientBuilder;
 use twilight_model::{
     application::interaction::application_command::CommandDataOption,
     guild::PartialMember,
@@ -24,10 +24,7 @@ use twilight_model::{
     },
 };
 
-use crate::{
-    create_event_handler,
-    interactions::application_commands::{ApplicationCommandData, CommonUtilities},
-};
+use crate::{client::DiscordClient, interactions::application_commands::ApplicationCommandData};
 
 pub struct LobbyData {
     pub data: Box<ApplicationCommandData>,
@@ -43,25 +40,25 @@ impl AsRef<ApplicationCommandData> for LobbyData {
 }
 
 pub struct LobbyCommandHandler {
-    utils: Arc<CommonUtilities>,
+    client: DiscordClient,
+    db: RunbackDB,
     lobby_events: CqrsFramework<Lobby, PersistedEventStore<PostgresEventRepository, Lobby>>,
-    lobby_view: LobbyQuery,
+    lobby_view: Box<LobbyQuery>,
 }
 
 impl LobbyCommandHandler {
-    pub async fn new(utils: Arc<CommonUtilities>) -> Self {
-        let lobby_service = LobbyService::new(
-            ClientBuilder::new()
-                .token(crate::CONFIG.token.to_owned())
-                .build(),
-        );
-        let lobby_events = create_event_handler::<Lobby>(lobby_service).await;
-        let lobby_view = todo!();
+    pub fn new(client: DiscordClient, db: RunbackDB) -> Self {
+        let lobby_service = LobbyService::new(client.clone());
+
+        let lobby_view = Box::new(LobbyQuery::new(Arc::new(db.get_view_repository())));
+        let lobby_events =
+            CqrsFramework::new(db.get_event_store(), vec![], lobby_service);
 
         Self {
-            utils,
             lobby_events,
             lobby_view,
+            client,
+            db,
         }
     }
 
@@ -77,7 +74,7 @@ impl LobbyCommandHandler {
                     data.data
                         .interaction
                         .channel_id
-                        .ok_or_else(|e| anyhow!("Channel ID was expected but not found."))?,
+                        .ok_or_else(|| anyhow!("Channel ID was expected but not found."))?,
                 )
                 .await?;
             }
@@ -90,7 +87,7 @@ impl LobbyCommandHandler {
             _ => return Err(anyhow!("")),
         }
 
-        self.utils.ack(&interaction.token).await?;
+        self.client.ack(&interaction.token).await?;
 
         Ok(())
     }
@@ -127,13 +124,10 @@ impl LobbyCommandHandler {
         thread_id: Id<ChannelMarker>,
         users: impl IntoIterator<Item = &Id<UserMarker>>,
     ) -> anyhow::Result<()> {
-        self.utils.http_client.join_thread(thread_id).await?;
+        self.client.join_thread(thread_id).await?;
 
         for user in users {
-            self.utils
-                .http_client
-                .add_thread_member(thread_id, *user)
-                .await?;
+            self.client.add_thread_member(thread_id, *user).await?;
         }
 
         Ok(())
