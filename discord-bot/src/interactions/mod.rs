@@ -3,20 +3,20 @@ pub mod panels;
 
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use crate::{client::RunbackClient, entity::sea_orm::prelude::Uuid};
+use crate::{client::RunbackClient};
 
 use futures::future::BoxFuture;
 use serde::Serialize;
 use tokio::time::timeout;
-use tracing::{Event, Instrument, Level};
+use tracing::{Instrument, Level};
 use twilight_gateway::Shard;
 use twilight_model::{
-    application::{command::Command, interaction::InteractionData},
+    application::{interaction::InteractionData},
     channel::message::MessageFlags,
     gateway::payload::incoming::InteractionCreate,
     http::interaction::{InteractionResponse, InteractionResponseType},
     id::{
-        marker::{CommandMarker, GuildMarker},
+        marker::{CommandMarker},
         Id,
     },
 };
@@ -24,7 +24,7 @@ use twilight_util::builder::embed::{EmbedBuilder, EmbedFieldBuilder, EmbedFooter
 
 use crate::{
     client::DiscordClient,
-    interactions::application_commands::{ApplicationCommandData, MessageComponentData},
+    interactions::application_commands::{ApplicationCommandData},
 };
 
 use self::application_commands::{
@@ -206,7 +206,7 @@ impl InteractionProcessor {
                     return Err(anyhow!("No such command handler found"));
                 }
             }
-            InteractionData::MessageComponent(message) => {
+            InteractionData::MessageComponent(_message) => {
                 debug!("Received message component");
 
                 todo!();

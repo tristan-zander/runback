@@ -1,8 +1,8 @@
 // Create a discord client for each shard, register handlers and shared state.
 
 use std::mem::MaybeUninit;
-use std::ptr::null;
-use std::{borrow::BorrowMut, sync::Arc};
+
+use std::{sync::Arc};
 
 use crate::{db::RunbackDB, entity::prelude::*};
 use futures::future::join;

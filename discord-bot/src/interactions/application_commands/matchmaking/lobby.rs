@@ -2,24 +2,23 @@ use std::sync::Arc;
 
 use crate::{
     db::RunbackDB,
-    entity::prelude::*,
     events::{Lobby, LobbyCommand},
     queries::LobbyQuery,
     services::LobbyService,
 };
 
-use chrono::Utc;
+
 use cqrs_es::{
-    persist::{GenericQuery, PersistedEventStore},
+    persist::{PersistedEventStore},
     CqrsFramework,
 };
-use postgres_es::{PostgresEventRepository, PostgresViewRepository};
+use postgres_es::{PostgresEventRepository};
 use sea_orm::prelude::Uuid;
 use twilight_model::{
     application::interaction::application_command::CommandDataOption,
     guild::PartialMember,
     id::{
-        marker::{ChannelMarker, GuildMarker, UserMarker},
+        marker::{ChannelMarker, UserMarker},
         Id,
     },
 };
@@ -135,8 +134,8 @@ impl LobbyCommandHandler {
 
     async fn close_lobby(
         &self,
-        owner: Id<UserMarker>,
-        channel: Id<ChannelMarker>,
+        _owner: Id<UserMarker>,
+        _channel: Id<ChannelMarker>,
     ) -> anyhow::Result<()> {
         unimplemented!()
     }

@@ -6,7 +6,7 @@ use crate::{
 };
 use chrono::Utc;
 use futures::StreamExt;
-use sea_orm::{prelude::*, Set};
+use sea_orm::Set;
 use tokio::task::JoinHandle;
 use twilight_gateway::Event;
 use twilight_model::{

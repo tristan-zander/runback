@@ -1,4 +1,4 @@
-use std::sync::Arc;
+
 
 use crate::{
     client::{DiscordClient, RunbackClient},
@@ -137,7 +137,6 @@ impl InteractionHandler for MatchmakingSettingsHandler {
                     .create_followup(data.interaction.token.as_str())
                     .content(message.as_str())?
                     .flags(MessageFlags::EPHEMERAL)
-                    .exec()
                     .await?;
             }
             "admin-role" => {
@@ -180,7 +179,6 @@ impl InteractionHandler for MatchmakingSettingsHandler {
                     .create_followup(data.interaction.token.as_str())
                     .content(message.as_str())?
                     .flags(MessageFlags::EPHEMERAL)
-                    .exec()
                     .await?;
             }
             _ => {
