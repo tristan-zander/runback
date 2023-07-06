@@ -70,11 +70,11 @@ impl InteractionHandler for MatchmakingCommandHandler {
             }
         });
 
-        let lobby = LobbyCommandHandler::new(client.discord_client.clone(), client.db());
+        let lobby = LobbyCommandHandler::new(client.discord(), client.db());
 
         Self {
             db: client.db(),
-            client: client.discord_client.clone(),
+            client: client.discord(),
             lobby,
             _background_task,
         }
@@ -752,7 +752,7 @@ impl BackgroundLoop {
     fn new(client: &RunbackClient) -> Self {
         Self {
             db: client.db(),
-            client: client.discord_client.clone(),
+            client: client.discord(),
             standby: client.standby.clone(),
         }
     }

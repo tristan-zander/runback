@@ -7,6 +7,7 @@ pub mod lfg {}
 pub mod matchmaking;
 
 use sea_orm::prelude::*;
+use serde::Serialize;
 use twilight_model::{
     application::{
         command::Command,
@@ -24,7 +25,7 @@ use crate::client::RunbackClient;
 
 /// Describes a group of commands. This is mainly used
 /// for structural purposes, and for the `/help` command
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct CommandGroupDescriptor {
     /// The name of the command group
     pub name: &'static str,

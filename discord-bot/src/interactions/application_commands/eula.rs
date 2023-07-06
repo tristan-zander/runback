@@ -35,7 +35,7 @@ impl InteractionHandler for EulaCommandHandler {
     fn create(client: &RunbackClient) -> Self {
         Self {
             db: client.db(),
-            client: client.discord_client.clone(),
+            client: client.discord(),
         }
     }
 

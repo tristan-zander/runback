@@ -1,5 +1,7 @@
 // Create a discord client for each shard, register handlers and shared state.
 
+use std::mem::MaybeUninit;
+use std::ptr::null;
 use std::{borrow::BorrowMut, sync::Arc};
 
 use crate::{db::RunbackDB, entity::prelude::*};
@@ -28,8 +30,9 @@ pub struct RunbackClient {
     db: RunbackDB,
     // do NOT use this field in any code that could be called during `new()`.
     // This should only be accessed well after the client has been initialized.
-    interactions: InteractionProcessor,
-    pub discord_client: DiscordClient,
+    // This field should never be externally available for this reason.
+    interactions: MaybeUninit<InteractionProcessor>,
+    discord_client: DiscordClient,
     pub standby: Arc<Standby>,
 }
 
@@ -39,19 +42,18 @@ impl RunbackClient {
         let discord_client = DiscordClient::new(token).await?;
 
         let mut interactions = InteractionProcessor::new(discord_client.clone());
-        interactions
-            .init(crate::CONFIG.debug_guild_id)
-            .await
-            .map_err(|e| -> anyhow::Error {
-                anyhow!("Could not create interaction command handler: {}", e)
-            })?;
-
-        Ok(Self {
+        let mut client = Self {
             standby,
             db,
-            interactions,
+            interactions: MaybeUninit::uninit(),
             discord_client,
-        })
+        };
+
+        interactions.init(&client).await?;
+
+        client.interactions = MaybeUninit::new(interactions);
+
+        Ok(client)
     }
 
     pub async fn run(&self, token: String) -> anyhow::Result<()> {
@@ -103,7 +105,8 @@ impl RunbackClient {
                             info!("Bot is ready!")
                         }
                         Event::InteractionCreate(i) => {
-                            let interaction_ref = &self.interactions;
+                            // SAFETY: interactions is guaranteed to be there after its constructor.
+                            let interaction_ref = unsafe { self.interactions.assume_init_ref() };
                             let shard = cluster_ref.shard(shard_id).unwrap();
                             let res = interaction_ref.handle_interaction(i, shard);
                             match res {
@@ -168,6 +171,10 @@ impl RunbackClient {
 
     pub fn db(&self) -> RunbackDB {
         self.db.clone()
+    }
+
+    pub fn discord(&self) -> DiscordClient {
+        self.discord_client.clone()
     }
 
     #[instrument(skip_all)]

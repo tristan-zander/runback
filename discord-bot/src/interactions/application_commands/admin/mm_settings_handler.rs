@@ -34,7 +34,7 @@ impl InteractionHandler for MatchmakingSettingsHandler {
     fn create(client: &RunbackClient) -> Self {
         Self {
             db: client.db(),
-            client: client.discord_client.clone(),
+            client: client.discord(),
         }
     }
 
