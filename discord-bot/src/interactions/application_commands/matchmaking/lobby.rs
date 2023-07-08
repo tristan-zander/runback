@@ -3,16 +3,12 @@ use std::sync::Arc;
 use crate::{
     db::RunbackDB,
     events::{Lobby, LobbyCommand},
-    queries::LobbyQuery,
+    queries::lobby::LobbyQuery,
     services::LobbyService,
 };
 
-
-use cqrs_es::{
-    persist::{PersistedEventStore},
-    CqrsFramework,
-};
-use postgres_es::{PostgresEventRepository};
+use cqrs_es::{persist::PersistedEventStore, CqrsFramework};
+use postgres_es::PostgresEventRepository;
 use sea_orm::prelude::Uuid;
 use twilight_model::{
     application::interaction::application_command::CommandDataOption,
@@ -21,20 +17,22 @@ use twilight_model::{
         marker::{ChannelMarker, UserMarker},
         Id,
     },
+    user::User,
 };
 
 use crate::{client::DiscordClient, interactions::application_commands::ApplicationCommandData};
 
 pub struct LobbyData {
-    pub data: Box<ApplicationCommandData>,
+    pub command: Box<ApplicationCommandData>,
     pub action: String,
     pub option: CommandDataOption,
     pub member: PartialMember,
+    pub user: User,
 }
 
 impl AsRef<ApplicationCommandData> for LobbyData {
     fn as_ref(&self) -> &ApplicationCommandData {
-        self.data.as_ref()
+        self.command.as_ref()
     }
 }
 
@@ -42,35 +40,35 @@ pub struct LobbyCommandHandler {
     client: DiscordClient,
     db: RunbackDB,
     lobby_events: CqrsFramework<Lobby, PersistedEventStore<PostgresEventRepository, Lobby>>,
-    lobby_view: Box<LobbyQuery>,
+    lobby_store: PersistedEventStore<PostgresEventRepository, Lobby>,
 }
 
 impl LobbyCommandHandler {
     pub fn new(client: DiscordClient, db: RunbackDB) -> Self {
         let lobby_service = LobbyService::new(client.clone());
 
-        let lobby_view = Box::new(LobbyQuery::new(Arc::new(db.get_view_repository())));
-        let lobby_events =
-            CqrsFramework::new(db.get_event_store(), vec![], lobby_service);
+        let lobby_store = db.get_event_store();
+        let query = Box::new(LobbyQuery::new(Arc::new(db.get_view_repository())));
+        let lobby_events = CqrsFramework::new(db.get_event_store(), vec![query], lobby_service);
 
         Self {
             lobby_events,
-            lobby_view,
+            lobby_store,
             client,
             db,
         }
     }
 
     pub async fn process_command(&self, data: LobbyData) -> Result<(), anyhow::Error> {
-        let interaction = data.data.interaction.clone();
+        let interaction = data.command.interaction.clone();
         match data.action.as_str() {
             "open" => {
                 self.open_lobby(data).await?;
             }
             "close" => {
                 self.close_lobby(
-                    data.data.user.id,
-                    data.data
+                    data.command.user.id,
+                    data.command
                         .interaction
                         .channel_id
                         .ok_or_else(|| anyhow!("Channel ID was expected but not found."))?,
@@ -86,13 +84,11 @@ impl LobbyCommandHandler {
             _ => return Err(anyhow!("")),
         }
 
-        self.client.ack(&interaction.token).await?;
-
         Ok(())
     }
 
     async fn open_lobby(&self, data: LobbyData) -> anyhow::Result<()> {
-        let interaction = data.data.interaction;
+        let interaction = data.command.interaction;
         let channel = interaction.channel_id.unwrap();
 
         let owner_id = data
@@ -114,6 +110,10 @@ impl LobbyCommandHandler {
             .map_err(|e| anyhow!(e))?;
 
         Ok(())
+    }
+
+    async fn has_opened_lobby(&self, user_id: Id<UserMarker>) -> Option<Lobby> {
+        unimplemented!()
     }
 
     async fn invite(&self) {}

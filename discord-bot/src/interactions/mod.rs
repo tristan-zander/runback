@@ -3,7 +3,7 @@ pub mod panels;
 
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use crate::{client::RunbackClient};
+use crate::client::RunbackClient;
 
 use futures::future::BoxFuture;
 use serde::Serialize;
@@ -11,21 +11,14 @@ use tokio::time::timeout;
 use tracing::{Instrument, Level};
 use twilight_gateway::Shard;
 use twilight_model::{
-    application::{interaction::InteractionData},
-    channel::message::MessageFlags,
+    application::interaction::InteractionData,
     gateway::payload::incoming::InteractionCreate,
     http::interaction::{InteractionResponse, InteractionResponseType},
-    id::{
-        marker::{CommandMarker},
-        Id,
-    },
+    id::{marker::CommandMarker, Id},
 };
 use twilight_util::builder::embed::{EmbedBuilder, EmbedFieldBuilder, EmbedFooterBuilder};
 
-use crate::{
-    client::DiscordClient,
-    interactions::application_commands::{ApplicationCommandData},
-};
+use crate::{client::DiscordClient, interactions::application_commands::ApplicationCommandData};
 
 use self::application_commands::{
     admin::admin_handler::AdminCommandHandler, matchmaking::MatchmakingCommandHandler,
@@ -78,10 +71,7 @@ impl InteractionProcessor {
         let handler: Arc<Box<(dyn InteractionHandler + std::marker::Send + Sync + 'static)>> =
             Arc::new(Box::new(T::create(client)));
 
-        HandlerDetails {
-            handler,
-            describe,
-        }
+        HandlerDetails { handler, describe }
     }
 
     async fn register_commands<T: IntoIterator<Item = HandlerDetails>>(
@@ -95,7 +85,12 @@ impl InteractionProcessor {
 
         let name_to_handler_mapping = handlers
             .iter()
-            .flat_map(|h| h.describe.commands.iter().map(|c| (c.name.as_str(), h.clone())))
+            .flat_map(|h| {
+                h.describe
+                    .commands
+                    .iter()
+                    .map(|c| (c.name.as_str(), h.clone()))
+            })
             .collect::<HashMap<_, _>>();
 
         debug!(
@@ -266,7 +261,7 @@ impl InteractionProcessor {
         let token = data.interaction.token.clone();
         let runback_id = data.id;
         let timeout = timeout(
-            Duration::from_secs(5),
+            Duration::from_secs(10),
             handler
                 .process_command(data)
                 .instrument(info_span!("command_exec")),
@@ -277,19 +272,12 @@ impl InteractionProcessor {
                 if let Err(e) = res {
                     error!(error = ?e, "Application Command Failed");
                     debug!(error = ?format!("{:?}", e), "Application Command Failed");
-                    discord_client
-                        .interaction()
-                        .create_followup(token.as_str())
-                        .flags(MessageFlags::EPHEMERAL)
-                        .embeds(&[EmbedBuilder::new()
-                            .description("An error has occurred.")
-                            .footer(
-                                EmbedFooterBuilder::new(runback_id.hyphenated().to_string())
-                                    .build(),
-                            )
-                            .field(EmbedFieldBuilder::new("error", e.to_string()).build())
-                            .validate()?
-                            .build()])?
+                    let _msg = discord_client
+                        .send_error_response(
+                            token.as_str(),
+                            runback_id,
+                            e.to_string().as_str(),
+                        )
                         .await?;
                 }
 

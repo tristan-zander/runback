@@ -2,17 +2,20 @@
 
 use std::mem::MaybeUninit;
 
-use std::{sync::Arc};
+use std::sync::Arc;
 
 use crate::{db::RunbackDB, entity::prelude::*};
 use futures::future::join;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
+use sqlx::types::Uuid;
 use tokio::signal::unix::{signal, SignalKind};
 use twilight_cache_inmemory::{InMemoryCache, ResourceType};
 use twilight_gateway::{Cluster, Event, Intents};
 use twilight_http::client::{ClientBuilder, InteractionClient};
 use twilight_model::application::interaction::Interaction;
+use twilight_model::channel::Message;
+use twilight_model::channel::message::MessageFlags;
 use twilight_model::guild::Guild;
 use twilight_model::http::interaction::InteractionResponse;
 use twilight_model::id::marker::{GuildMarker, UserMarker};
@@ -23,6 +26,7 @@ use twilight_model::{
     user::CurrentUser,
 };
 use twilight_standby::Standby;
+use twilight_util::builder::embed::{EmbedBuilder, EmbedFieldBuilder, EmbedFooterBuilder};
 
 use crate::interactions::InteractionProcessor;
 
@@ -361,5 +365,26 @@ impl DiscordClient {
             .await?;
 
         Ok(())
+    }
+
+    pub async fn send_error_response(
+        &self,
+        token: &str,
+        error_id: Uuid,
+        error_message: &str,
+    ) -> anyhow::Result<Message> {
+        let res = self
+            .interaction()
+            .create_followup(token)
+            .flags(MessageFlags::EPHEMERAL)
+            .embeds(&[EmbedBuilder::new()
+                .description("An error has occurred.")
+                .footer(EmbedFooterBuilder::new(error_id.hyphenated().to_string()).build())
+                .field(EmbedFieldBuilder::new("error", error_message).build())
+                .validate()?
+                .build()])?
+            .await?.model().await?;
+
+        Ok(res)
     }
 }

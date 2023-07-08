@@ -162,9 +162,13 @@ impl InteractionHandler for MatchmakingCommandHandler {
                     let action = option.name.clone();
                     self.lobby
                         .process_command(LobbyData {
+                            command: data_copy,
                             action,
-                            data: data_copy,
                             option,
+                            user: member_copy
+                                .user
+                                .clone()
+                                .ok_or_else(|| anyhow!("could not get user details"))?,
                             member: member_copy,
                         })
                         .await?;
