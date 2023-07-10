@@ -3,7 +3,10 @@ use std::sync::Arc;
 use crate::{
     db::RunbackDB,
     events::{Lobby, LobbyCommand},
-    queries::lobby::LobbyQuery,
+    queries::{
+        lobby::{self, LobbyQuery, LobbyView},
+        SeaOrmViewRepository,
+    },
     services::LobbyService,
 };
 
@@ -40,15 +43,18 @@ pub struct LobbyCommandHandler {
     client: DiscordClient,
     db: RunbackDB,
     lobby_events: CqrsFramework<Lobby, PersistedEventStore<PostgresEventRepository, Lobby>>,
-    lobby_store: PersistedEventStore<PostgresEventRepository, Lobby>,
+    lobby_store: Arc<SeaOrmViewRepository<LobbyView, Lobby, lobby::ActiveModel>>,
 }
 
 impl LobbyCommandHandler {
     pub fn new(client: DiscordClient, db: RunbackDB) -> Self {
         let lobby_service = LobbyService::new(client.clone());
 
-        let lobby_store = db.get_event_store();
-        let query = Box::new(LobbyQuery::new(Arc::new(db.get_view_repository())));
+        let lobby_store = Arc::new(SeaOrmViewRepository {
+            connection: db.connection(),
+            phantom: Default::default(),
+        });
+        let query = Box::new(LobbyQuery::new(lobby_store.clone()));
         let lobby_events = CqrsFramework::new(db.get_event_store(), vec![query], lobby_service);
 
         Self {
@@ -60,6 +66,7 @@ impl LobbyCommandHandler {
     }
 
     pub async fn process_command(&self, data: LobbyData) -> Result<(), anyhow::Error> {
+        debug!(action = ?data.action, "processing lobby command");
         let interaction = data.command.interaction.clone();
         match data.action.as_str() {
             "open" => {
@@ -68,10 +75,9 @@ impl LobbyCommandHandler {
             "close" => {
                 self.close_lobby(
                     data.command.user.id,
-                    data.command
-                        .interaction
+                    interaction
                         .channel_id
-                        .ok_or_else(|| anyhow!("Channel ID was expected but not found."))?,
+                        .ok_or_else(|| anyhow!("channel id was expected but not found."))?,
                 )
                 .await?;
             }
@@ -101,10 +107,7 @@ impl LobbyCommandHandler {
         self.lobby_events
             .execute(
                 Uuid::new_v4().to_string().as_str(),
-                LobbyCommand::OpenLobby {
-                    owner_id: owner_id.get(),
-                    channel: channel.get(),
-                },
+                LobbyCommand::OpenLobby { owner_id, channel },
             )
             .await
             .map_err(|e| anyhow!(e))?;
@@ -137,6 +140,6 @@ impl LobbyCommandHandler {
         _owner: Id<UserMarker>,
         _channel: Id<ChannelMarker>,
     ) -> anyhow::Result<()> {
-        unimplemented!()
+        Ok(())
     }
 }

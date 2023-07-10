@@ -1,4 +1,4 @@
-use std::{marker::PhantomData, num::NonZeroU64};
+use std::{marker::PhantomData, num::NonZeroU64, str::FromStr};
 
 use sea_orm::{
     sea_query::{Nullable, ValueType, ValueTypeErr},
@@ -187,5 +187,16 @@ impl<T> From<Id<T>> for IdWrapper<T> {
     fn from(id: Id<T>) -> Self {
         // Id's are always nonzero, so this is fine.
         unsafe { Self::new_unchecked(id.get()) }
+    }
+}
+
+impl<T> FromStr for IdWrapper<T> {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        // SAFETY: Nonzerou64 is never 0
+        unsafe {
+            Ok(IdWrapper::new_unchecked(NonZeroU64::from_str(s)?.get()))
+        }
     }
 }

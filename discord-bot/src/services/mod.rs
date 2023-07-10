@@ -27,17 +27,11 @@ impl LobbyService {
     }
 
     #[instrument(skip(self))]
-    pub async fn open_lobby(&self, owner_id: u64, channel_id: u64) -> Result<(), LobbyError> {
-        let channel_id = Id::from(
-            NonZeroU64::new(channel_id)
-                .ok_or_else(|| LobbyError::from("Channel Id was found to be zero."))?,
-        );
-
-        let owner_id = Id::from(
-            NonZeroU64::new(owner_id)
-                .ok_or_else(|| LobbyError::from("Owner Id was found to be zero."))?,
-        );
-
+    pub async fn open_lobby(
+        &self,
+        owner_id: Id<UserMarker>,
+        channel_id: Id<ChannelMarker>,
+    ) -> Result<(), LobbyError> {
         let res = self
             .discord
             .create_thread(

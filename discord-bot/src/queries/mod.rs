@@ -18,55 +18,59 @@ pub trait MaterializedViewTrait {
     fn version_column() -> Self::VersionColumnType;
 }
 
-pub struct SeaOrmViewRepository<V, A> 
+pub struct SeaOrmViewRepository<V, A, T> 
 where
-    A: Aggregate + ModelTrait + ActiveModelTrait + MaterializedViewTrait,
-    V: View<A> + IntoActiveModel<A>,
-    <<<<A as ModelTrait>::Entity as EntityTrait>::PrimaryKey as PrimaryKeyTrait>::ValueType as FromStr>::Err:
+    A: Aggregate, 
+    // TODO: Figure out how to require IntoActiveModel here.
+    V: View<A> + ModelTrait + MaterializedViewTrait + IntoActiveModel<T>,
+    T: ActiveModelTrait<Entity = V::Entity> + Send + Sync + 'static,
+    <<<<V as ModelTrait>::Entity as EntityTrait>::PrimaryKey as PrimaryKeyTrait>::ValueType as FromStr>::Err:
         Into<Box<dyn Error + Send + Sync + 'static>>,
-    <<<A as ModelTrait>::Entity as EntityTrait>::PrimaryKey as PrimaryKeyTrait>::ValueType: FromStr,
-    Option<<<A as ModelTrait>::Entity as sea_orm::EntityTrait>::Model>: Into<Option<V>>,
-    <<A as ActiveModelTrait>::Entity as EntityTrait>::Model: IntoActiveModel<A>
+    <<<V as ModelTrait>::Entity as EntityTrait>::PrimaryKey as PrimaryKeyTrait>::ValueType: FromStr,
+    Option<<<V as ModelTrait>::Entity as sea_orm::EntityTrait>::Model>: Into<Option<V>>,
+    <V::Entity as EntityTrait>::Model: IntoActiveModel<T>
  {
     pub connection: Arc<DatabaseConnection>,
-    pub phantom: PhantomData<(V, A)>,
+    pub phantom: PhantomData<(V, A, T)>,
 }
 
-impl<V, A> SeaOrmViewRepository<V, A>
+impl<V, A, T> SeaOrmViewRepository<V, A, T>
 where
-    A: Aggregate + ModelTrait + ActiveModelTrait + MaterializedViewTrait,
-    V: View<A> + IntoActiveModel<A>,
-    <<<<A as ModelTrait>::Entity as EntityTrait>::PrimaryKey as PrimaryKeyTrait>::ValueType as FromStr>::Err:
+    A: Aggregate, 
+    V: View<A> + ModelTrait + MaterializedViewTrait + IntoActiveModel<T>,
+    T: ActiveModelTrait<Entity = V::Entity> + Send + Sync + 'static,
+    <<<<V as ModelTrait>::Entity as EntityTrait>::PrimaryKey as PrimaryKeyTrait>::ValueType as FromStr>::Err:
         Into<Box<dyn Error + Send + Sync + 'static>>,
-    <<<A as ModelTrait>::Entity as EntityTrait>::PrimaryKey as PrimaryKeyTrait>::ValueType: FromStr,
-    Option<<<A as ModelTrait>::Entity as sea_orm::EntityTrait>::Model>: Into<Option<V>>,
-    <<A as ActiveModelTrait>::Entity as EntityTrait>::Model: IntoActiveModel<A>
+    <<<V as ModelTrait>::Entity as EntityTrait>::PrimaryKey as PrimaryKeyTrait>::ValueType: FromStr,
+    Option<<<V as ModelTrait>::Entity as sea_orm::EntityTrait>::Model>: Into<Option<V>>,
+    <V::Entity as EntityTrait>::Model: IntoActiveModel<T>
 {
-    pub async fn create_view(&self, view: V, context: ViewContext) -> anyhow::Result<()> {
-        let res = <A as ActiveModelTrait>::Entity::insert(view.into_active_model()).exec(self.connection.as_ref()).await?;
+    pub async fn create_view(&self, view: V, context: ViewContext) -> Result<(), PersistenceError> {
+        let res = <V::Entity as EntityTrait>::insert(view.into_active_model()).exec(self.connection.as_ref()).await.map_err(|e| PersistenceError::UnknownError(e.into()))?;
         Ok(())
     }
 
-    pub async fn update_view(&self, view: V, context: ViewContext) -> anyhow::Result<()> {
-        <A as ActiveModelTrait>::Entity::update(view.into_active_model()).exec(self.connection.as_ref()).await?;
+    pub async fn update_view(&self, view: V, context: ViewContext) -> Result<(), PersistenceError> {
+        <V::Entity as EntityTrait>::update(view.into_active_model()).exec(self.connection.as_ref()).await.map_err(|e |PersistenceError::UnknownError(e.into()))?;
         Ok(())
     }
 }
 
 #[async_trait]
-impl<V, A> ViewRepository<V, A> for SeaOrmViewRepository<V, A>
+impl<V, A, T> ViewRepository<V, A> for SeaOrmViewRepository<V, A, T>
 where
-    A: Aggregate + ModelTrait + ActiveModelTrait + MaterializedViewTrait,
-    V: View<A> + IntoActiveModel<A>,
-    <<<<A as ModelTrait>::Entity as EntityTrait>::PrimaryKey as PrimaryKeyTrait>::ValueType as FromStr>::Err:
+    A: Aggregate, 
+    V: View<A> + ModelTrait + MaterializedViewTrait + IntoActiveModel<T>,
+    T: ActiveModelTrait<Entity = V::Entity> + Send + Sync + 'static,
+    <<<<V as ModelTrait>::Entity as EntityTrait>::PrimaryKey as PrimaryKeyTrait>::ValueType as FromStr>::Err:
         Into<Box<dyn Error + Send + Sync + 'static>>,
-    <<<A as ModelTrait>::Entity as EntityTrait>::PrimaryKey as PrimaryKeyTrait>::ValueType: FromStr,
-    Option<<<A as ModelTrait>::Entity as sea_orm::EntityTrait>::Model>: Into<Option<V>>,
-    <<A as ActiveModelTrait>::Entity as EntityTrait>::Model: IntoActiveModel<A>
+    <<<V as ModelTrait>::Entity as EntityTrait>::PrimaryKey as PrimaryKeyTrait>::ValueType: FromStr,
+    Option<<<V as ModelTrait>::Entity as sea_orm::EntityTrait>::Model>: Into<Option<V>>,
+    <V::Entity as EntityTrait>::Model: IntoActiveModel<T>
 {
     async fn load(&self, view_id: &str) -> Result<Option<V>, PersistenceError> {
-        let key = <<<<A as ModelTrait>::Entity as EntityTrait>::PrimaryKey as PrimaryKeyTrait>::ValueType as FromStr>::from_str(view_id).map_err(|e| PersistenceError::UnknownError(e.into()))?;
-        let view = <<A as ModelTrait>::Entity as EntityTrait>::find_by_id(key)
+        let key = <<<V::Entity as EntityTrait>::PrimaryKey as PrimaryKeyTrait>::ValueType as FromStr>::from_str(view_id).map_err(|e| PersistenceError::UnknownError(e.into()))?;
+        let view = V::Entity::find_by_id(key)
             .one(self.connection.as_ref())
             .await
             .map_err(|e| match e {
@@ -84,8 +88,8 @@ where
         &self,
         view_id: &str,
     ) -> Result<Option<(V, ViewContext)>, PersistenceError> {
-        let key = <<<<A as ModelTrait>::Entity as EntityTrait>::PrimaryKey as PrimaryKeyTrait>::ValueType as FromStr>::from_str(view_id).map_err(|e| PersistenceError::UnknownError(e.into()))?;
-        let view_res = <<A as ModelTrait>::Entity as EntityTrait>::find_by_id(key)
+        let key = <<<V::Entity as EntityTrait>::PrimaryKey as PrimaryKeyTrait>::ValueType as FromStr>::from_str(view_id).map_err(|e| PersistenceError::UnknownError(e.into()))?;
+        let view_res = V::Entity::find_by_id(key)
             .one(self.connection.as_ref())
             .await
             .map_err(|e| match e {
@@ -107,12 +111,10 @@ where
         let exists = context.version > 0;
         if exists {
             self.update_view(view, context)
-                .await
-                .map_err(|e| PersistenceError::UnknownError(e.into()))?;
+                .await?;
         } else {
             self.create_view(view, context)
-                .await
-                .map_err(|e| PersistenceError::UnknownError(e.into()))?;
+                .await?;
         }
         Ok(())
     }

@@ -187,7 +187,7 @@ impl InteractionHandler for MatchmakingCommandHandler {
 
                 let lobby = MatchmakingLobbies::find()
                     .filter(matchmaking_lobbies::Column::ChannelId.eq(IdWrapper::from(chan_id)))
-                    .one(self.db.connection())
+                    .one(self.db.db_ref())
                     .await?;
 
                 if lobby.is_none() {
@@ -336,7 +336,7 @@ impl InteractionHandler for MatchmakingCommandHandler {
 
                 let lobby = MatchmakingLobbies::find()
                     .filter(matchmaking_lobbies::Column::ChannelId.eq(IdWrapper::from(chan_id)))
-                    .one(self.db.connection())
+                    .one(self.db.db_ref())
                     .await?;
 
                 if let Some(lobby) = lobby {
@@ -368,7 +368,7 @@ impl InteractionHandler for MatchmakingCommandHandler {
                         ..Default::default()
                     })
                     .filter(matchmaking_lobbies::Column::TimeoutAfter.gte(Utc::now()))
-                    .exec(self.db.connection())
+                    .exec(self.db.db_ref())
                     .await?;
                 } else {
                     return Err(anyhow!(
@@ -420,7 +420,7 @@ impl InteractionHandler for MatchmakingCommandHandler {
                 // let invitation = MatchmakingInvitation::find()
                 //     .filter(matchmaking_invitation::Column::MessageId.eq(IdWrapper::from(msg_id)))
                 //     .filter(matchmaking_invitation::Column::ChannelId.eq(IdWrapper::from(chan_id)))
-                //     .one(self.db.connection()())
+                //     .one(self.db.db_ref()))
                 //     .await?
                 //     .ok_or_else(|| anyhow!("could not find a valid invitation."))?;
                 //
@@ -449,7 +449,7 @@ impl InteractionHandler for MatchmakingCommandHandler {
                 // }
                 //
                 // let opponent = Users::find_by_id(invitation.invited_by)
-                //     .one(self.db.connection()())
+                //     .one(self.db.db_ref()))
                 //     .await?
                 //     .ok_or_else(|| {
                 //         anyhow!("could not find user information for the person that invited you")
@@ -536,7 +536,7 @@ impl InteractionHandler for MatchmakingCommandHandler {
                 // }
                 //
                 // let _res = matchmaking_lobbies::Entity::insert(lobby.into_active_model())
-                //     .exec(self.db.connection()())
+                //     .exec(self.db.db_ref()))
                 //     .await?;
                 //
                 // self.utils
@@ -557,7 +557,7 @@ impl InteractionHandler for MatchmakingCommandHandler {
                 //
                 // let invitation = MatchmakingInvitation::find()
                 //     .filter(matchmaking_invitation::Column::MessageId.eq(IdWrapper::from(msg.id)))
-                //     .one(self.db.connection()())
+                //     .one(self.db.db_ref()))
                 //     .await?
                 //     .ok_or_else(|| anyhow!("could not find that match invitation"))?;
                 //
@@ -651,7 +651,7 @@ impl InteractionHandler for MatchmakingCommandHandler {
                 //     expires_at: Set(Utc::now()), // TODO: Set the invitation as "Denied"
                 //     ..Default::default()
                 // })
-                // .exec(self.db.connection()())
+                // .exec(self.db.db_ref()))
                 // .await?;
                 //
                 // Ok(())
@@ -673,7 +673,7 @@ impl MatchmakingCommandHandler {
 
         if user_model.user_id != invitation.invited_by {
             let author = Users::find_by_id(invitation.invited_by)
-                .one(self.db.connection())
+                .one(self.db.db_ref())
                 .await?
                 .ok_or_else(|| anyhow!("no user found with that id"))?;
             let _res = self
@@ -689,7 +689,7 @@ impl MatchmakingCommandHandler {
                 .await;
         } else {
             let user_model = Users::find_by_id(invitation.extended_to)
-                .one(self.db.connection())
+                .one(self.db.db_ref())
                 .await?
                 .ok_or_else(|| anyhow!("no user found with that id"))?;
             self.dm_invited(
@@ -804,7 +804,7 @@ impl BackgroundLoop {
                     .lte(Utc::now().add(chrono::Duration::minutes(15))),
             )
             .filter(matchmaking_lobbies::Column::EndedAt.is_null())
-            .all(self.db.connection())
+            .all(self.db.db_ref())
             .await?;
 
         Ok(lobbies)
@@ -820,7 +820,7 @@ impl BackgroundLoop {
         debug!(lobby = ?lobby.id, "extending lobby session");
 
         MatchmakingLobbies::update(lobby)
-            .exec(self.db.connection())
+            .exec(self.db.db_ref())
             .await?;
 
         Ok(())
@@ -914,7 +914,7 @@ impl BackgroundLoop {
             timeout_warning_message: Set(Some(msg.id.into())),
             ..Default::default()
         })
-        .exec(self.db.connection())
+        .exec(self.db.db_ref())
         .await?;
 
         Ok(())
@@ -950,7 +950,7 @@ impl BackgroundLoop {
             ended_at: Set(Some(Utc::now())),
             ..Default::default()
         })
-        .exec(self.db.connection())
+        .exec(self.db.db_ref())
         .await?;
 
         Ok(())
@@ -960,7 +960,7 @@ impl BackgroundLoop {
         let lobbies = MatchmakingLobbies::find()
             .filter(matchmaking_lobbies::Column::TimeoutAfter.lte(Utc::now()))
             .filter(matchmaking_lobbies::Column::EndedAt.is_null())
-            .all(self.db.connection())
+            .all(self.db.db_ref())
             .await?;
 
         Ok(lobbies)
@@ -1008,7 +1008,7 @@ impl BackgroundLoop {
     async fn on_channel_delete(&self, chan: Box<ChannelDelete>) -> anyhow::Result<()> {
         let lobby = matchmaking_lobbies::Entity::find()
             .filter(matchmaking_lobbies::Column::ChannelId.eq(IdWrapper::from(chan.id)))
-            .one(self.db.connection())
+            .one(self.db.db_ref())
             .await?;
 
         if let Some(_lobby) = lobby {

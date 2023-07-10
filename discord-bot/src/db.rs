@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use crate::entity::prelude::*;
 use chrono::Utc;
 use cqrs_es::View;
@@ -17,7 +19,7 @@ use twilight_model::id::Id;
 #[derive(Clone)]
 pub struct RunbackDB {
     pool: Pool<Postgres>,
-    database_connection: DatabaseConnection,
+    database_connection: Arc<DatabaseConnection>,
 }
 
 impl RunbackDB {
@@ -28,9 +30,11 @@ impl RunbackDB {
             .await
             .map_err(|e| anyhow!(e))?;
 
-        let database_connection = Database::connect(connection_string)
-            .await
-            .map_err(|e| anyhow!(e))?;
+        let database_connection = Arc::new(
+            Database::connect(connection_string)
+                .await
+                .map_err(|e| anyhow!(e))?,
+        );
 
         Ok(Self {
             pool,
@@ -44,18 +48,23 @@ impl RunbackDB {
     }
 
     pub fn get_view_repository<T: View<A>, A: Aggregate>(&self) -> PostgresViewRepository<T, A> {
+        unimplemented!();
         PostgresViewRepository::new("TODO", self.pool.clone())
     }
 
-    pub fn connection(&self) -> &DatabaseConnection {
-        &self.database_connection
+    pub fn connection(&self) -> Arc<DatabaseConnection> {
+        self.database_connection.clone()
+    }
+
+    pub fn db_ref(&self) -> &DatabaseConnection {
+        self.database_connection.as_ref()
     }
 
     #[cfg(feature = "migrator")]
     pub async fn migrate(&self) -> anyhow::Result<()> {
         use sea_orm_migration::MigratorTrait;
 
-        crate::migration::Migrator::up(self.connection(), None).await?;
+        crate::migration::Migrator::up(self.db_ref(), None).await?;
         Ok(())
     }
 
@@ -70,7 +79,7 @@ impl RunbackDB {
 
         let guild_id: IdWrapper<_> = guild.into();
         let setting = Setting::find_by_id(guild_id.clone())
-            .one(self.connection())
+            .one(self.db_ref())
             .await?;
 
         match setting {
@@ -83,7 +92,7 @@ impl RunbackDB {
                 };
 
                 let setting = Setting::insert(setting)
-                    .exec_with_returning(self.connection())
+                    .exec_with_returning(self.db_ref())
                     .await?;
 
                 Ok(setting)
@@ -94,7 +103,7 @@ impl RunbackDB {
     pub async fn find_or_create_user(&self, id: Id<UserMarker>) -> anyhow::Result<users::Model> {
         let res = Users::find()
             .filter(users::Column::DiscordUser.eq(IdWrapper::from(id)))
-            .one(self.connection())
+            .one(self.db_ref())
             .await?;
 
         if let Some(user) = res {
@@ -106,7 +115,7 @@ impl RunbackDB {
             };
 
             let user = Users::insert(user.into_active_model())
-                .exec_with_returning(self.connection())
+                .exec_with_returning(self.db_ref())
                 .await?;
 
             return Ok(user);

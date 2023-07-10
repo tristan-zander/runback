@@ -129,7 +129,7 @@ impl InteractionHandler for MatchmakingSettingsHandler {
                 }
 
                 MatchmakingSettings::update(model)
-                    .exec(self.db.connection())
+                    .exec(self.db.db_ref())
                     .await?;
 
                 self.client
@@ -171,7 +171,7 @@ impl InteractionHandler for MatchmakingSettingsHandler {
                 }
 
                 MatchmakingSettings::update(model)
-                    .exec(self.db.connection())
+                    .exec(self.db.db_ref())
                     .await?;
 
                 self.client
@@ -269,13 +269,13 @@ impl MatchmakingSettingsHandler {
             .ok_or_else(|| anyhow!("You cannot use Runback in a DM."))?;
 
         let setting = MatchmakingSettings::find_by_id(guild_id.into())
-            .one(self.db.connection())
+            .one(self.db.db_ref())
             .await?;
 
         let _setting = if setting.is_some() {
             let mut setting = unsafe { setting.unwrap_unchecked() }.into_active_model();
             setting.channel_id = Set(Some(channel_id.into()));
-            setting.update(self.db.connection()).await?
+            setting.update(self.db.db_ref()).await?
         } else {
             let setting = matchmaking_settings::Model {
                 guild_id: guild_id.into(),
@@ -288,7 +288,7 @@ impl MatchmakingSettingsHandler {
             .into_active_model();
             setting
                 .into_active_model()
-                .insert(self.db.connection())
+                .insert(self.db.db_ref())
                 .await?
         };
 
@@ -322,7 +322,7 @@ impl MatchmakingSettingsHandler {
                 admin_role: Set(Some(role.into())),
                 ..Default::default()
             })
-            .exec(self.db.connection())
+            .exec(self.db.db_ref())
             .await?,
         )
     }

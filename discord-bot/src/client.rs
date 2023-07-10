@@ -196,7 +196,7 @@ impl RunbackClient {
 
         let settings = MatchmakingSettings::find()
             .filter(matchmaking_settings::Column::GuildId.eq(IdWrapper::from(guild_id)))
-            .one(db.connection())
+            .one(db.db_ref())
             .await?;
 
         if let Some(settings) = settings {
@@ -220,7 +220,7 @@ impl RunbackClient {
                 channel_id: Set(None),
                 ..Default::default()
             })
-            .exec(db.connection())
+            .exec(db.db_ref())
             .await?;
 
             // TODO: Notify the guild owner that they need to set a new matchmaking channel.
@@ -240,7 +240,7 @@ impl RunbackClient {
 
         let settings = MatchmakingSettings::find()
             .filter(matchmaking_settings::Column::GuildId.eq(IdWrapper::from(guild_id)))
-            .one(db.connection())
+            .one(db.db_ref())
             .await?;
 
         if let Some(settings) = settings {
@@ -264,7 +264,7 @@ impl RunbackClient {
                 channel_id: Set(None),
                 ..Default::default()
             })
-            .exec(db.connection())
+            .exec(db.db_ref())
             .await?;
 
             // TODO: Notify the guild owner that they need to set a new admin role.

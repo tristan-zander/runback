@@ -16,7 +16,6 @@ use twilight_model::{
     http::interaction::{InteractionResponse, InteractionResponseType},
     id::{marker::CommandMarker, Id},
 };
-use twilight_util::builder::embed::{EmbedBuilder, EmbedFieldBuilder, EmbedFooterBuilder};
 
 use crate::{client::DiscordClient, interactions::application_commands::ApplicationCommandData};
 

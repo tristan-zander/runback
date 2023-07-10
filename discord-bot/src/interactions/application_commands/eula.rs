@@ -1,5 +1,3 @@
-
-
 use crate::entity::prelude::*;
 
 use chrono::Utc;
@@ -110,7 +108,7 @@ impl InteractionHandler for EulaCommandHandler {
                     }
 
                     let res = MatchmakingSettings::find_by_id(gid.into())
-                        .one(self.db.connection())
+                        .one(self.db.db_ref())
                         .await?;
                     match res {
                         Some(existing_settings) => {
@@ -132,7 +130,7 @@ impl InteractionHandler for EulaCommandHandler {
                             } else {
                                 let mut active = existing_settings.into_active_model();
                                 active.has_accepted_eula = Set(Some(Utc::now()));
-                                let db_ref = self.db.connection();
+                                let db_ref = self.db.db_ref();
                                 async move { active.update(db_ref).await }.await?;
                             }
                         }
@@ -144,7 +142,7 @@ impl InteractionHandler for EulaCommandHandler {
                                 ..Default::default()
                             };
 
-                            settings.insert(self.db.connection()).await?;
+                            settings.insert(self.db.db_ref()).await?;
                         }
                     };
 
