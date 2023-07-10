@@ -13,7 +13,6 @@ pub use Model as LobbyView;
 
 use super::{MaterializedViewTrait, SeaOrmViewRepository};
 
-// TODO: Build custom query that automatically updates the materialized views as events come in.
 pub type LobbyQuery =
     GenericQuery<SeaOrmViewRepository<LobbyView, Lobby, ActiveModel>, LobbyView, Lobby>;
 

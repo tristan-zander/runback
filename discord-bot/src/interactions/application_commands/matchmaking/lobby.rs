@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{sync::Arc, error::Error};
 
 use crate::{
     db::RunbackDB,
@@ -54,7 +54,8 @@ impl LobbyCommandHandler {
             connection: db.connection(),
             phantom: Default::default(),
         });
-        let query = Box::new(LobbyQuery::new(lobby_store.clone()));
+        let mut query = Box::new(LobbyQuery::new(lobby_store.clone()));
+        query.use_error_handler(Box::new(|e| error!(error = ?e, "could not update views")));
         let lobby_events = CqrsFramework::new(db.get_event_store(), vec![query], lobby_service);
 
         Self {

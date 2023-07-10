@@ -88,6 +88,7 @@ where
         &self,
         view_id: &str,
     ) -> Result<Option<(V, ViewContext)>, PersistenceError> {
+        // FIXME: This view ID is a UUID, whereas I need it to be the user ID for now.
         let key = <<<V::Entity as EntityTrait>::PrimaryKey as PrimaryKeyTrait>::ValueType as FromStr>::from_str(view_id).map_err(|e| PersistenceError::UnknownError(e.into()))?;
         let view_res = V::Entity::find_by_id(key)
             .one(self.connection.as_ref())
