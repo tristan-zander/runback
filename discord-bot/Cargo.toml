@@ -68,7 +68,7 @@ tracing-subscriber = { version = "*", features = ["json"] }
 twilight-cache-inmemory = "0.14.1"
 twilight-gateway = "0.14.0"
 twilight-http = "0.14.1"
-twilight-model = "0.14.0"
+twilight-model = "0.15.4"
 twilight-standby = "0.14.0"
 twilight-mention = "0.14.0"
 twilight-validate = "0.14.0"
