@@ -1,0 +1,8 @@
+{
+    "name": "runback",
+    "description": "Tournaments and Matchmaking for the FGC",
+    "private": true,
+    "workspaces": [
+        "packages/*"
+    ]
+}

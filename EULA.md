@@ -1,8 +1,0 @@
-**Discord Client**
-The Discord client may store non-identifying information about a user's Discord account, such as their Discord ID. The client may also temporarily store messages sent in a server, such as during tournaments and matchmaking sessions, for up to thirty (30) days. Users that do not interact with the bot will not have their information stored by "Runback" services. "Runback" retains every right to store data given to the bot through interactions, such as matchmaking sessions and tournament history.
-
-**Privacy Policy**
-The "Runback" platform will take all reasonable precautions to ensure that information is kept within the platform and only accessible by authorized users. Trusted members that operate under the "Runback" organization will have visible access to all non-private information for testing, development, and monitoring purposes. Private information will always be encrypted and only visible to its owner and to any service that they explicitly grant authorization.
-Any user may request that any of their identifying information be expunged from the platform at any time, leaving only their unique user ID in the database. Non-identifying information, such as matchmaking history or ranking points, will still reference your unique user ID. No information will ever be shared outside of the "Runback" platform or any integration without the consent of the user.
-
-***By using this service, you agree to the terms of this End User License Agreement.***

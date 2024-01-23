@@ -1,7 +1,0 @@
-pre-release-commit-message = "chore: Release {{version}}"
-tag-message = "{{tag_name}}"
-tag-name = "{{prefix}}v{{version}}"
-# pre-release-hook = ["./hook.sh", "一", "два", "Three", "4"]
-consolidate-commits = false
-consolidate-pushes = true
-allow-branch = ["main", "next", "alpha"]

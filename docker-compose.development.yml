@@ -2,17 +2,6 @@
 # This should NEVER be enabled in production.
 version: "3.9"
 services:
-  discord-bot:
-    build:
-      dockerfile: ./discord-bot/development.Dockerfile
-      context: .
-    volumes:
-      - .:/var/app
-      - build_cache:/root/.cargo
-    depends_on:
-      - db
-    cpu_percent: 80
-  
   pgadmin:
     image: dpage/pgadmin4
     ports:
