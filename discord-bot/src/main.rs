@@ -97,6 +97,7 @@ async fn entrypoint() -> anyhow::Result<()> {
     // let scheme = ShardScheme::Bucket { bucket_id: (), concurrency: (), total: () };
 
     runback_client.run(crate::CONFIG.token.clone()).await?;
+
     Ok(())
 }
 

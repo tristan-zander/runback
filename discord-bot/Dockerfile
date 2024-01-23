@@ -1,4 +1,4 @@
-FROM alpine:3.16
+FROM alpine:3.19
 # Why is gcc necessary? Is it for the migration?
 RUN apk add --no-cache openssl gcc
 COPY app/bin /var/app
