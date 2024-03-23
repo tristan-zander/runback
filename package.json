@@ -1,8 +1,12 @@
 {
-    "name": "runback",
-    "description": "Tournaments and Matchmaking for the FGC",
-    "private": true,
-    "workspaces": [
-        "packages/*"
-    ]
+  "name": "runback",
+  "description": "Tournaments and Matchmaking for the FGC",
+  "private": true,
+  "workspaces": [
+    "services/*",
+    "libs/*"
+  ],
+  "devDependencies": {
+    "nx": "18.1.2"
+  }
 }
