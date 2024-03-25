@@ -70,6 +70,6 @@ twilight-gateway = "0.14.0"
 twilight-http = "0.14.1"
 twilight-model = "0.14.0"
 twilight-standby = "0.14.0"
-twilight-mention = "0.14.0"
+twilight-mention = "0.15.3"
 twilight-validate = "0.14.0"
 twilight-util = { version = "0.14.1", features = ["full"] }
